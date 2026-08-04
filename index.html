@@ -3,11 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<!-- adicionado à tela inicial do Android, abre sem a barra do navegador -->
+<!-- o manifesto é o que faz o Chrome do Android INSTALAR de verdade;
+     sem ele "adicionar à tela inicial" cria só um atalho de navegador -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#f2f3f6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<!-- combina com o topo da faixa colorida, para a barra de status não destoar -->
+<meta name="theme-color" content="#1b348a" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12193a" media="(prefers-color-scheme: dark)">
 <title>Controle Financeiro</title>
 <style>
 :root{
@@ -1083,6 +1087,10 @@ document.addEventListener('change',e=>{
 
 /* ============ start ============ */
 load(); gerarFixas(); render();
+
+/* só serve quando o app está hospedado; aberto como arquivo local não há o que registrar */
+if('serviceWorker' in navigator && location.protocol.startsWith('http'))
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 /* ---- autoteste: roda com ?teste na URL ---- */
 if(location.search.includes('teste')){

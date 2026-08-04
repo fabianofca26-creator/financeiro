@@ -8,11 +8,13 @@ Feito para quem paga contas no cartão, parcela compras e vive pagando coisa que
 
 Abra direto no navegador: **https://fabianofca26-creator.github.io/financeiro/**
 
-Ou baixe o [`index.html`](index.html) e abra com duplo clique — funciona igual, sem internet nenhuma.
+No celular, abra esse endereço no Chrome e use **"Instalar app"** no menu (⋮). Ele instala de verdade: ganha ícone próprio, abre em tela cheia sem a barra do navegador e **funciona sem internet**, porque um service worker guarda o app no aparelho.
+
+> Se aparecer só "Adicionar à tela inicial" em vez de "Instalar app", é o navegador segurando a versão antiga em cache. Recarregue a página forçando (puxe para baixo) e tente de novo.
+
+Ou baixe o [`index.html`](index.html) e abra com duplo clique — funciona igual, sem depender de nada.
 
 Depois vá em **Mais › Ajustes** e cadastre suas contas com o saldo de hoje, e então os cartões.
-
-No celular, use "Adicionar à tela inicial" pelo menu do navegador: ele passa a abrir como aplicativo, sem a barra do navegador.
 
 > **Seus dados ficam só no seu aparelho**, no `localStorage` do navegador. Nada é enviado para lugar nenhum. Isso também quer dizer que **limpar os dados de navegação apaga tudo** — exporte o backup de vez em quando. O app avisa quando passa de 7 dias sem backup.
 
@@ -95,6 +97,12 @@ Abra o arquivo com `?teste` no fim da URL e veja o console do navegador. Ele rod
 
 ```
 https://fabianofca26-creator.github.io/financeiro/?teste
+```
+
+Para testar o service worker e a instalação é preciso servir por HTTP — arquivo local não registra service worker:
+
+```bash
+node serve.js
 ```
 
 ## O que ele não faz
