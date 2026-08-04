@@ -332,7 +332,7 @@ function render(){
 }
 function menu(){
   const ar=aReceber();
-  $('#mdl').innerHTML=`<div class="mask" data-act="fechar"><div class="mdl" onclick="event.stopPropagation()">
+  $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
     <div class="grab"></div><div class="menu">
     ${NO_MENU.map(k=>`<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}<span>${TITULO[k]}</span>
       ${k==='empresa'&&ar>0?`<span class="rt empc">${R(ar)}</span>`:''}</button>`).join('')}
@@ -731,7 +731,7 @@ function formModal(titulo,campos,onSave,hint){
     if(c.type==='check')return `<div class="chk"><input type="checkbox" id="${id}" ${c.v?'checked':''}><span>${c.label}</span></div>`;
     return `<label>${c.label}</label><input id="${id}" type="${c.type==='num'?'number':(c.type==='date'?'date':'text')}" ${c.type==='money'?'inputmode="decimal"':''} ${c.min!=null?`min="${c.min}"`:''} ${c.max!=null?`max="${c.max}"`:''} value="${esc(c.v??'')}" placeholder="${esc(c.ph||'')}">`;
   }).join('');
-  $('#mdl').innerHTML=`<div class="mask" data-act="fechar"><div class="mdl" onclick="event.stopPropagation()">
+  $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
     <h3>${esc(titulo)}</h3>${hint?`<div class="hint">${hint}</div>`:''}${html}
     <button class="b" data-act="mdl-ok">Salvar</button>
     <button class="b gh" data-act="fechar">Cancelar</button></div></div>`;
@@ -811,7 +811,7 @@ function editar(tipo,id){
 function abrirLanc(id){
   const l=db.lanc.find(x=>x.id===id); if(!l)return;
   const pod=(l.tipo==='saida'||l.tipo==='entrada')&&!isCartao(l.contaId)&&!l.ajuste;
-  $('#mdl').innerHTML=`<div class="mask" data-act="fechar"><div class="mdl" onclick="event.stopPropagation()">
+  $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
     <h3>${esc(l.desc)}</h3>
     <div class="sub">${dDia(l.data)} · ${R(l.valor)} · ${esc(nomeConta(l.contaId))}${l.parcs>1?` · parcela ${l.parc}/${l.parcs}`:''}${l.empresa?' · empresa':''}</div>
     ${pod?`<button class="b" data-act="pago|${id}">${l.pago?(l.tipo==='saida'?'Desmarcar pago':'Desmarcar recebido'):(l.tipo==='saida'?'Marcar como pago':'Marcar como recebido')}</button>`:''}
@@ -871,7 +871,7 @@ function pagarFatura(cid,ref){
 }
 function verFatura(cid,ref){
   const it=faturaItens(cid,ref).sort((a,b)=>a.data<b.data?-1:1);
-  $('#mdl').innerHTML=`<div class="mask" data-act="fechar"><div class="mdl" onclick="event.stopPropagation()">
+  $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
     <h3>Fatura ${lblMes(ref)} — ${esc(nomeConta(cid))}</h3>
     ${it.length?it.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}${l.parcs>1?` <span class="tag k">${l.parc}/${l.parcs}</span>`:''}${l.empresa?' <span class="tag e">empresa</span>':''}</div><div class="sub">${dDia(l.data)}</div></div><div class="v">${R(l.valor)}</div></div>`).join('')
     :'<div class="empty">Fatura vazia.</div>'}
@@ -926,6 +926,9 @@ document.addEventListener('click',e=>{
     case 'menu':menu();break;
     case 'salvar':salvar();break;
     case 'fechar':fecharMdl();break;
+    /* clique no fundo escuro fecha; clique dentro da caixa, não.
+       não dá para usar stopPropagation aqui: mataria o clique de todo botão do modal */
+    case 'fora':if(e.target.classList.contains('mask'))fecharMdl();break;
     case 'mdl-ok':mdlSave&&mdlSave();break;
     case 'pago':togglePago(arg);break;
     case 'editar-lanc':editarLanc(arg);break;
@@ -1023,7 +1026,30 @@ if(location.search.includes('teste')){
   // fumaça de UI: nenhuma tela pode estourar erro ao desenhar
   for(const t of Object.keys(VIEWS)){try{tab=t;render()}catch(e){throw new Error('FALHOU ao desenhar '+t+': '+e.message)}}
   ok(document.querySelectorAll('#bar button').length===5,'barra inferior com 5 botões');
-  menu(); ok(document.querySelectorAll('.menu button').length===4,'menu Mais com 4 itens'); fecharMdl();
+
+  /* clicar de verdade, não só chamar as funções. um stopPropagation no modal já
+     matou o clique de TODO botão de modal sem nenhum teste perceber. */
+  const clk=s=>{const e=typeof s==='string'?document.querySelector(s):s;if(!e)throw new Error('sumiu: '+s);e.click()};
+  const campo=(id,v)=>{document.querySelector(id).value=v};
+  const achaEd=k=>[...document.querySelectorAll('[data-ed]')].find(b=>b.dataset.ed===k);
+
+  tab='config'; render();
+  const nc=db.contas.length;
+  clk(achaEd('conta|')); campo('#mf_nome','Teste'); campo('#mf_saldoInicial','1.000,00'); clk('[data-act="mdl-ok"]');
+  ok(db.contas.length===nc+1,'clicar em Salvar cria a conta');
+  ok(db.contas[db.contas.length-1].saldoInicial===100000,'valor do formulário chega certo');
+  ok(!document.querySelector('.mdl'),'modal fecha ao salvar');
+  clk(achaEd('conta|')); campo('#mf_nome','   '); clk('[data-act="mdl-ok"]');
+  ok(db.contas.length===nc+1&&document.querySelector('.mdl'),'nome vazio não cria e mantém o modal aberto');
+  clk('[data-act="fechar"]'); ok(!document.querySelector('.mdl'),'botão Cancelar fecha');
+
+  tab='inicio'; render(); clk('[data-act="menu"]');
+  ok(document.querySelectorAll('.menu button').length===4,'menu Mais com 4 itens');
+  clk('.menu [data-tab="orcamento"]');
+  ok(tab==='orcamento'&&!document.querySelector('.mdl'),'item do menu navega e fecha');
+  clk('[data-act="menu"]'); clk('.mdl .grab');
+  ok(!!document.querySelector('.mdl'),'clique dentro da caixa não fecha');
+  clk('.mask'); ok(!document.querySelector('.mdl'),'clique no fundo escuro fecha');
 
   if(real)localStorage.setItem(K,real); else localStorage.removeItem(K);
   load(); tab='inicio'; mes=mesDe(hoje()); novo.parcs=1; render();
