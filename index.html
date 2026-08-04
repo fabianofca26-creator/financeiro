@@ -49,7 +49,9 @@ header.curto{padding-bottom:40px}
  display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;font:650 10px/1 inherit;letter-spacing:.1px;position:relative}
 #bar button.on{color:var(--ac)}
 #bar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-#bar .add{background:var(--ac);color:#fff;max-width:60px;border-radius:16px;margin:-2px 4px 0;box-shadow:0 4px 12px rgba(47,107,255,.35)}
+/* sem rótulo embaixo, precisa centralizar sozinho — os outros botões são preenchidos pelo texto */
+#bar .add{background:var(--ac);color:#fff;max-width:60px;border-radius:16px;margin:-2px 4px 0;
+ justify-content:center;padding:6px;box-shadow:0 4px 12px rgba(47,107,255,.35)}
 #bar .add svg{stroke-width:2.4}
 #bar .add:active{transform:scale(.94)}
 #bar .dot{position:absolute;top:4px;right:calc(50% - 16px);width:7px;height:7px;border-radius:50%;background:var(--emp)}
