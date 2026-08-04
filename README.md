@@ -75,6 +75,19 @@ Compra parcelada lança o crédito **cheio no mês da compra**, porque quem deve
 
 As pessoas são cadastradas em **Ajustes › Pessoas que me devem**. A marcada como "empresa" é a que ganha a seção separada.
 
+### O Relatório
+
+Quatro gráficos, desenhados em SVG puro — o app não carrega biblioteca nenhuma:
+
+- **Para onde foi** — rosca das 5 maiores categorias do mês, o resto somado em "Outros". Os valores ficam na legenda, não em cima das fatias.
+- **Saldo ao longo do mês** — dia a dia, traço cheio no que já aconteceu e tracejado na projeção até o fim do mês, já descontando o que vence e as faturas.
+- **Já comprometido** — quanto dos próximos 6 meses está vendido antes de começar, separando parcelas do cartão de contas fixas.
+- **Entrou e saiu** — 12 meses lado a lado, para enxergar em que época do ano aperta.
+
+Tocar em qualquer barra, fatia ou dia escreve o valor embaixo do título. Nenhum valor depende disso: cada gráfico já mostra o seu número principal sem nenhum toque, e a rosca traz a tabela inteira na legenda.
+
+As cores não foram escolhidas no olho — passaram por um validador de contraste e de daltonismo contra as duas superfícies do app, clara e escura.
+
 ### Contas fixas
 
 Cadastre uma vez (aluguel, luz, internet, salário) e elas nascem sozinhas como pendentes quando o mês vira. As marcadas como "valor estimado" aprendem o valor novo quando você paga um valor diferente.

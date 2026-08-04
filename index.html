@@ -138,6 +138,32 @@ button.s.p{background:var(--ac);border-color:var(--ac);color:#fff}
 .it:last-child{border-bottom:0}
 .it input[type=checkbox]{width:21px;height:21px;accent-color:var(--emp);flex:0 0 auto}
 .clk{cursor:pointer}
+
+/* ---- gráficos ----
+   Paleta validada com o script do guia de visualização, contra as superfícies
+   reais deste app (#fff claro / #181c22 escuro). Não trocar tom no olhômetro:
+   a ordem dos tons é o que garante separação para daltonismo. */
+.viz{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;
+ --pos:#008300;--neg:#e34948;--grid:#e1e0d9;--eixo:#c3c2b7;--tinta:#52514e}
+@media(prefers-color-scheme:dark){.viz{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;
+ --neg:#e66767;--grid:#2c2c2a;--eixo:#383835;--tinta:#c3c2b7}}
+.viz svg{display:block;width:100%;height:auto;overflow:visible}
+.viz .gd{stroke:var(--grid);stroke-width:1}
+.viz .ex{stroke:var(--eixo);stroke-width:1}
+.viz text{fill:var(--tinta);font:600 10px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.viz .tk{fill:var(--mut);font-weight:600;font-variant-numeric:tabular-nums}
+.viz .rot{font-size:11px;font-weight:700}
+.viz [data-info]{cursor:pointer}
+/* leitura fica sempre visível: o valor nunca depende de passar o dedo em cima */
+.lida{font-size:12.5px;color:var(--mut);margin:2px 0 10px;min-height:17px}
+.lida b{color:var(--tx);font-variant-numeric:tabular-nums}
+.leg{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px}
+.leg>div{display:flex;align-items:center;gap:7px;font-size:12.5px;min-width:0}
+.leg i{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.leg .nm{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.leg .vl{font-weight:700;font-variant-numeric:tabular-nums;margin-left:auto}
+.legt>div{width:100%}
+.vazio{color:var(--mut);text-align:center;padding:30px 8px;font-size:13.5px}
 </style>
 </head>
 <body>
@@ -735,36 +761,203 @@ function vOrcamento(){
   <div class="hint">Deixe vazio para a categoria não aparecer no orçamento. Só entra aqui a parte que é gasto seu: num rateio, a sua fatia.</div></div>`;
 }
 
-/* ---- Relatório ---- */
-function vRelatorio(){
-  const gm=porCategoria(mes), tot=gm.reduce((s,[,v])=>s+v,0);
-  const meses=[]; for(let i=5;i>=0;i--)meses.push(addMes(mes,-i));
-  const max=Math.max(1,...meses.map(m=>Math.max(somaMeu(gastosMes(m)),soma(receitasMes(m)))));
-  return `<div class="c"><h2>Para onde foi o dinheiro — ${lblMes(mes)}</h2>
-  ${gm.length?gm.map(([id,v])=>{
-    const c=cat(id);
-    return `<div style="padding:9px 0;border-bottom:1px solid var(--bd)">
-      <div style="display:flex;justify-content:space-between"><b>${c?esc(c.nome):'Sem categoria'}</b>
-      <span class="v">${R(v)} <span class="mutc" style="font-weight:400">${(v/tot*100).toFixed(0)}%</span></span></div>
-      <div class="bar"><i style="width:${v/gm[0][1]*100}%;background:var(--ac)"></i></div></div>`;
-  }).join('')+`<div class="row"><div class="l"><b>Total</b></div><div class="v neg">${R(tot)}</div></div>`
-  :'<div class="empty">Sem gastos neste mês.</div>'}</div>
+/* ============ dados dos gráficos ============ */
 
-  <div class="c"><h2>Últimos 6 meses</h2>
-  ${meses.map(m=>{
-    const g=somaMeu(gastosMes(m)),r=soma(receitasMes(m)),d=r-g;
-    return `<div style="padding:9px 0;border-bottom:1px solid var(--bd)">
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <b class="clk" data-mes="${m}">${lblMes(m)}</b>
-        <span class="v ${d<0?'neg':'pos'}">${d>=0?'+':''}${R(d)}</span></div>
-      <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
-        <div class="bar" style="flex:1"><i style="width:${r/max*100}%"></i></div>
-        <span class="sub pos" style="width:88px;text-align:right">${R(r)}</span></div>
-      <div style="display:flex;gap:4px;margin-top:3px;align-items:center">
-        <div class="bar" style="flex:1"><i class="d" style="width:${g/max*100}%"></i></div>
-        <span class="sub neg" style="width:88px;text-align:right">${R(g)}</span></div></div>`;
-  }).join('')}
-  <div class="hint">Compra no cartão conta no mês em que foi feita, não no mês da fatura. O que outros te devem fica de fora — num rateio, só a sua fatia conta.</div></div>`;
+/* saldo no fim de um dia. Até hoje conta só o que foi pago (é o que existiu de
+   verdade); depois de hoje entra o previsto, incluindo fatura que vence no meio. */
+function saldoDia(d){
+  const h=hoje(), futuro=d>h;
+  let s=db.contas.filter(c=>c.tipo!=='cartao'&&!c.arq).reduce((a,c)=>a+(c.saldoInicial||0),0);
+  for(const l of db.lanc){
+    if(l.ajuste||l.data>d)continue;
+    if(isCartao(l.contaId))continue;      /* compra no cartão não move caixa */
+    if(!l.pago&&!futuro)continue;
+    if(l.tipo==='saida')s-=l.valor;
+    else if(l.tipo==='entrada')s+=l.valor;
+    else if(l.tipo==='fatura')s-=l.valor;
+    else if(l.tipo==='reemb')s+=l.valor;
+    /* transferência entre contas suas não muda o total */
+  }
+  if(futuro)for(const c of cartoes())for(const ref of refsCartao(c.id)){
+    const ab=faturaAberto(c.id,ref), v=faturaVenc(c,ref);
+    if(ab>0&&v<=d&&v>h)s-=ab;
+  }
+  return s;
+}
+/* quanto de um mês já está vendido antes de começar */
+function comprometido(ym){
+  const atual=mesDe(hoje());
+  let cartao=0;
+  for(const c of cartoes())for(const ref of refsCartao(c.id)){
+    const ab=faturaAberto(c.id,ref);
+    if(ab>0&&mesDe(faturaVenc(c,ref))===ym)cartao+=ab;
+  }
+  let fixas;
+  if(ym<=atual)  /* já viraram lançamento: usa o que está pendente, senão conta duas vezes */
+    fixas=db.lanc.filter(l=>l.fixaId&&l.tipo==='saida'&&!l.pago&&mesDe(l.data)===ym&&!isCartao(l.contaId))
+                 .reduce((s,l)=>s+l.valor,0);
+  else
+    fixas=db.fixas.filter(f=>f.ativa&&f.tipo==='saida'&&!isCartao(f.contaId))
+                  .reduce((s,f)=>s+f.valor,0);
+  return {cartao,fixas,total:cartao+fixas};
+}
+
+/* ============ desenho ============ */
+const CORES=['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)'];
+const inf=t=>`data-info="${esc(t)}"`;
+/* coluna com topo arredondado e base reta, como manda a especificação de marcas */
+function col(x,y,w,h,r=4){
+  if(h<=0)return '';
+  const rr=Math.min(r,w/2,h);
+  return `M${x} ${y+h}V${y+rr}a${rr} ${rr} 0 0 1 ${rr} -${rr}h${w-2*rr}a${rr} ${rr} 0 0 1 ${rr} ${rr}V${y+h}Z`;
+}
+/* escala do eixo Y arredondada para número limpo */
+function escala(maxV){
+  if(maxV<=0)return {top:100,passo:50};
+  const bruto=maxV/2, ordem=Math.pow(10,Math.floor(Math.log10(bruto)));
+  const passo=[1,2,2.5,5,10].map(m=>m*ordem).find(p=>p>=bruto)||10*ordem;
+  return {top:Math.ceil(maxV/passo)*passo,passo};
+}
+const kR=c=>{const v=c/100;return Math.abs(v)>=1000?(v/1000).toFixed(v%1000?1:0).replace('.',',')+'k':String(Math.round(v))};
+
+/* ---- Relatório ---- */
+const bloco=(titulo,lida,corpo,dica)=>`<div class="c"><h2>${titulo}</h2>
+  <div class="lida">${lida}</div>${corpo}${dica?`<div class="hint">${dica}</div>`:''}</div>`;
+
+/* 1. rosca: parte-do-todo de relance. No máximo 6 fatias — passando disso as
+   cores adjacentes borram. O valor fica na legenda, não na fatia. */
+function gRosca(){
+  const todos=porCategoria(mes), tot=todos.reduce((s,[,v])=>s+v,0);
+  if(!tot)return bloco(`Para onde foi — ${lblMes(mes)}`,'',
+    `<div class="vazio">Nenhum gasto seu em ${lblMes(mes)}.</div>`);
+  const top=todos.slice(0,5).map(([id,v])=>({nome:cat(id)?cat(id).nome:'Sem categoria',v}));
+  const resto=todos.slice(5).reduce((s,[,v])=>s+v,0);
+  const fat=resto>0?[...top,{nome:'Outros',v:resto}]:top;
+  const r=54, C=2*Math.PI*r;
+  let acc=0;
+  const arcos=fat.map((f,i)=>{
+    const fr=f.v/tot, len=Math.max(1,C*fr-2);   /* 2px de folga entre fatias */
+    const s=`<circle cx="70" cy="70" r="${r}" fill="none" stroke="${CORES[i]}" stroke-width="17"
+      stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-C*acc).toFixed(2)}"
+      transform="rotate(-90 70 70)" ${inf(`${f.nome}: ${R(f.v)} — ${Math.round(fr*100)}% do mês`)}/>`;
+    acc+=fr; return s;
+  }).join('');
+  const legenda=fat.map((f,i)=>`<div ${inf(`${f.nome}: ${R(f.v)} — ${Math.round(f.v/tot*100)}% do mês`)}>
+    <i style="background:${CORES[i]}"></i><span class="nm">${esc(f.nome)}</span>
+    <span class="vl">${R(f.v)}<span class="mutc" style="font-weight:400"> ${Math.round(f.v/tot*100)}%</span></span></div>`).join('');
+  return bloco(`Para onde foi — ${lblMes(mes)}`,`Total de gastos seus: <b>${R(tot)}</b>`,
+    `<svg viewBox="0 0 140 140" style="max-width:190px;margin:2px auto 0" role="img"
+       aria-label="Gastos por categoria em ${lblMes(mes)}">${arcos}
+      <text x="70" y="67" text-anchor="middle" style="font-size:9px;fill:var(--mut)">TOTAL</text>
+      <text x="70" y="82" text-anchor="middle" style="font-size:15px;font-weight:700">${R(tot)}</text></svg>
+     <div class="leg legt">${legenda}</div>`,
+    resto>0?(todos.length-5===1?'A categoria menor está somada em “Outros”.'
+            :`As ${todos.length-5} categorias menores estão somadas em “Outros”.`):'');
+}
+
+/* 2. saldo dia a dia: traço cheio no que já aconteceu, tracejado na projeção */
+function gSaldo(){
+  const [y,m]=mes.split('-').map(Number), nd=ultDia(y,m), h=hoje();
+  const pts=[]; for(let d=1;d<=nd;d++){const dt=`${mes}-${p2(d)}`;pts.push({d,dt,v:saldoDia(dt)})}
+  /* linha de saldo mostra a faixa real: forçar o zero achata a variação do mês
+     e a linha vira um traço reto que não informa nada. O zero entra quando o
+     saldo chega perto dele — que é justamente quando ele importa. */
+  const vs=pts.map(p=>p.v);
+  let lo=Math.min(...vs), hi=Math.max(...vs);
+  if(lo<0)hi=Math.max(hi,0);
+  else if(lo<hi*0.25)lo=0;
+  const folga=(hi-lo)*0.12||1000;
+  if(lo!==0)lo-=folga;
+  hi+=folga;
+  const faixa=(hi-lo)||1000;
+  const X0=38,X1=308,Y0=12,Y1=112;
+  const px=d=>X0+(d-1)/(nd-1||1)*(X1-X0);
+  const py=v=>Y1-(v-lo)/faixa*(Y1-Y0);
+  const hojeIdx=pts.findIndex(p=>p.dt>=h);
+  const corte=h<`${mes}-01`?0:(h>`${mes}-${p2(nd)}`?nd:(hojeIdx<0?nd:hojeIdx+1));
+  const linha=a=>a.map((p,i)=>`${i?'L':'M'}${px(p.d).toFixed(1)} ${py(p.v).toFixed(1)}`).join(' ');
+  const passado=pts.slice(0,corte), futuro=pts.slice(Math.max(0,corte-1));
+  const fim=pts[pts.length-1], zeroY=py(0);
+  const ticks=[lo,lo+faixa/2,hi].map(v=>`<line class="gd" x1="${X0}" y1="${py(v).toFixed(1)}" x2="${X1}" y2="${py(v).toFixed(1)}"/>
+    <text class="tk" x="${X0-5}" y="${(py(v)+3).toFixed(1)}" text-anchor="end">${kR(v)}</text>`).join('');
+  const alvos=pts.map(p=>`<rect x="${(px(p.d)-4).toFixed(1)}" y="${Y0}" width="8" height="${Y1-Y0}" fill="transparent"
+    ${inf(`Dia ${p.d}: ${R(p.v)}${p.dt>h?' (previsto)':''}`)}/>`).join('');
+  return bloco(`Saldo ao longo de ${lblMes(mes)}`,
+    `Fecha o mês com <b class="${fim.v<0?'neg':''}">${R(fim.v)}</b>`,
+    `<svg viewBox="0 0 320 138" role="img" aria-label="Saldo dia a dia em ${lblMes(mes)}">
+      ${ticks}
+      ${lo<0?`<line class="ex" x1="${X0}" y1="${zeroY.toFixed(1)}" x2="${X1}" y2="${zeroY.toFixed(1)}"/>`:''}
+      ${passado.length>1?`<path d="${linha(passado)}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`:''}
+      ${futuro.length>1?`<path d="${linha(futuro)}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-dasharray="4 4" stroke-linecap="round"/>`:''}
+      <circle cx="${px(fim.d).toFixed(1)}" cy="${py(fim.v).toFixed(1)}" r="4" fill="var(--s1)" stroke="var(--card)" stroke-width="2"/>
+      <text class="tk" x="${X0}" y="${Y1+16}">dia 1</text>
+      <text class="tk" x="${X1}" y="${Y1+16}" text-anchor="end">dia ${nd}</text>
+      ${alvos}</svg>`,
+    corte>0&&corte<nd?'Traço cheio é o que já aconteceu; tracejado é a projeção com o que ainda vence.':'');
+}
+
+/* 3. o que mais dói: quanto dos próximos meses já está vendido */
+function gComprometido(){
+  const base=mesDe(hoje());
+  const ms=[]; for(let i=0;i<6;i++)ms.push(addMes(base,i));
+  const dd=ms.map(m=>({m,...comprometido(m)}));
+  const tot=Math.max(...dd.map(d=>d.total));
+  if(!tot)return bloco('Já comprometido','',
+    '<div class="vazio">Nada parcelado nem fixo à frente.</div>');
+  const e=escala(tot), X0=38,X1=308,Y0=12,Y1=112;
+  const larg=Math.min(24,(X1-X0)/6-10);
+  const py=v=>Y1-v/e.top*(Y1-Y0);
+  const barras=dd.map((d,i)=>{
+    const cx=X0+(i+.5)*((X1-X0)/6)-larg/2;
+    const hc=(Y1-py(d.cartao)), hf=(Y1-py(d.fixas));
+    /* 2px de folga entre os dois pedaços da pilha */
+    const yF=py(d.total), yC=Y1-hc;
+    return `<g ${inf(`${lblMes(d.m)}: ${R(d.total)} — cartão ${R(d.cartao)}, fixas ${R(d.fixas)}`)}>
+      <rect x="${cx-3}" y="${Y0}" width="${larg+6}" height="${Y1-Y0}" fill="transparent"/>
+      ${d.cartao?`<path d="${col(cx,yC,larg,hc,d.fixas?0:4)}" fill="var(--s1)"/>`:''}
+      ${d.fixas?`<path d="${col(cx,yF,larg,hf-(d.cartao?2:0),4)}" fill="var(--s2)"/>`:''}
+      <text class="tk" x="${cx+larg/2}" y="${Y1+16}" text-anchor="middle">${MESES[+d.m.slice(5)-1]}</text></g>`;
+  }).join('');
+  const gy=[0,e.top/2,e.top].map(v=>`<line class="gd" x1="${X0}" y1="${py(v).toFixed(1)}" x2="${X1}" y2="${py(v).toFixed(1)}"/>
+    <text class="tk" x="${X0-5}" y="${(py(v)+3).toFixed(1)}" text-anchor="end">${kR(v)}</text>`).join('');
+  const pior=dd.reduce((a,b)=>b.total>a.total?b:a);
+  return bloco('Já comprometido nos próximos 6 meses',
+    `Pior mês: <b>${lblMes(pior.m)}</b> com <b>${R(pior.total)}</b>`,
+    `<svg viewBox="0 0 320 138" role="img" aria-label="Comprometido por mês">${gy}${barras}</svg>
+     <div class="leg"><div><i style="background:var(--s1)"></i><span class="nm">Parcelas do cartão</span></div>
+     <div><i style="background:var(--s2)"></i><span class="nm">Contas fixas</span></div></div>`,
+    'Parcela de compra da empresa entra aqui também — o dinheiro sai da sua conta antes do reembolso chegar.');
+}
+
+/* 4. entrou contra saiu, 12 meses */
+function gAnual(){
+  const ms=[]; for(let i=11;i>=0;i--)ms.push(addMes(mes,-i));
+  const dd=ms.map(m=>({m,e:soma(receitasMes(m)),s:somaMeu(gastosMes(m))}));
+  const topo=Math.max(1,...dd.map(d=>Math.max(d.e,d.s)));
+  const e=escala(topo), X0=34,X1=310,Y0=12,Y1=108;
+  const banda=(X1-X0)/12, larg=Math.min(9,(banda-4)/2);
+  const py=v=>Y1-v/e.top*(Y1-Y0);
+  const cols=dd.map((d,i)=>{
+    const cx=X0+i*banda+banda/2;
+    return `<g ${inf(`${lblMes(d.m)}: entrou ${R(d.e)}, saiu ${R(d.s)} — sobra ${R(d.e-d.s)}`)}>
+      <rect x="${(cx-banda/2).toFixed(1)}" y="${Y0}" width="${banda.toFixed(1)}" height="${Y1-Y0}" fill="transparent"/>
+      <path d="${col(cx-larg-1,py(d.e),larg,Y1-py(d.e))}" fill="var(--pos)"/>
+      <path d="${col(cx+1,py(d.s),larg,Y1-py(d.s))}" fill="var(--neg)"/>
+      ${i%2===0?`<text class="tk" x="${cx.toFixed(1)}" y="${Y1+15}" text-anchor="middle">${MESES[+d.m.slice(5)-1]}</text>`:''}</g>`;
+  }).join('');
+  const gy=[0,e.top/2,e.top].map(v=>`<line class="gd" x1="${X0}" y1="${py(v).toFixed(1)}" x2="${X1}" y2="${py(v).toFixed(1)}"/>
+    <text class="tk" x="${X0-4}" y="${(py(v)+3).toFixed(1)}" text-anchor="end">${kR(v)}</text>`).join('');
+  const ano=dd.reduce((a,d)=>({e:a.e+d.e,s:a.s+d.s}),{e:0,s:0});
+  return bloco('Entrou e saiu — 12 meses',
+    `No período: entrou <b>${R(ano.e)}</b>, saiu <b>${R(ano.s)}</b>`,
+    `<svg viewBox="0 0 320 130" role="img" aria-label="Entradas e saídas por mês">${gy}${cols}</svg>
+     <div class="leg"><div><i style="background:var(--pos)"></i><span class="nm">Entrou</span></div>
+     <div><i style="background:var(--neg)"></i><span class="nm">Saiu</span></div></div>`,
+    'Compra no cartão conta no mês em que foi feita, não no da fatura. Num rateio, só a sua fatia entra.');
+}
+
+function vRelatorio(){
+  return `<div class="viz">${gRosca()}${gSaldo()}${gComprometido()}${gAnual()}</div>`;
 }
 
 /* ---- Config ---- */
@@ -1025,9 +1218,15 @@ const VIEWS={inicio:vInicio,lancar:vLancar,extrato:vExtrato,cartoes:vCartoes,
 
 /* ============ eventos ============ */
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp]');
+  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp],[data-info]');
   if(!t)return;
   const d=t.dataset;
+  /* tocar numa marca do gráfico escreve o valor na linha de leitura do cartão */
+  if(d.info!==undefined){
+    const l=t.closest('.c')?.querySelector('.lida');
+    if(l)l.textContent=d.info;
+    return;
+  }
   if(d.tab){fecharMdl();tab=d.tab;render();return}
   if(d.tp){novo.tipo=d.tp;novo.catId='';render();return}
   if(d.fl){filtro=d.fl;render();return}
@@ -1222,6 +1421,26 @@ if(location.search.includes('teste')){
   clk('[data-selp="'+irmao.id+'"]');
   ok(sel.size===1,'“Marcar” seleciona os itens daquela pessoa');
   sel.clear();
+
+  /* gráficos */
+  ok(escala(4880).top % escala(4880).passo === 0,'eixo fecha em múltiplo do passo');
+  [1,999,1000,123456].forEach(v=>{const s=escala(v);ok(s.top>=v&&s.passo>0,'escala cobre '+v)});
+  ok(col(0,0,10,0)==='','coluna de altura zero não desenha nada');
+  ok(saldoDia('2026-01-31')===saldo('B'),'saldoDia fecha igual ao saldo da conta no fim do mês');
+  db.fixas.push({id:'FX',desc:'Net',tipo:'saida',valor:12000,dia:10,contaId:'B',catId:cm,ativa:true,ultimoMes:mesDe(hoje())});
+  ok(comprometido(addMes(mesDe(hoje()),1)).fixas===12000,'mês futuro usa a regra da conta fixa');
+  ok(comprometido(mesDe(hoje())).fixas===0,'mês atual não conta a fixa que já virou lançamento');
+  mes='2026-01'; tab='relatorio'; render();
+  ok(document.querySelectorAll('.viz .c').length===4,'relatório tem os quatro gráficos');
+  ok(document.querySelectorAll('.viz [data-info]').length>20,'as marcas respondem ao toque');
+  ok([...document.querySelectorAll('.viz .lida')].every(l=>l.textContent.trim()),
+     'todo gráfico mostra um valor sem precisar tocar — nada fica preso no toque');
+  const fatias=document.querySelectorAll('.viz .c:first-child circle[data-info]').length;
+  ok(fatias>0&&fatias<=6,'rosca com no máximo 6 fatias, senão as cores borram');
+  document.querySelector('.viz [data-info]').dispatchEvent(new MouseEvent('click',{bubbles:true}));
+  ok(/R\$/.test(document.querySelector('.viz .lida').textContent),'tocar numa marca escreve o valor');
+  mes='2019-01'; render();
+  ok(document.querySelectorAll('.viz .c').length===4,'mês sem nenhum dado desenha sem quebrar');
 
   if(real)localStorage.setItem(K,real); else localStorage.removeItem(K);
   load(); tab='inicio'; mes=mesDe(hoje()); novo.parcs=1; render();
