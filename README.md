@@ -6,11 +6,13 @@ Feito para quem paga contas no cartão, parcela compras e ainda gasta dinheiro p
 
 ## Como usar
 
-1. Baixe o [`controle-financeiro.html`](controle-financeiro.html)
-2. Abra no navegador (duplo clique)
-3. Vá em **Mais › Ajustes** e cadastre suas contas com o saldo de hoje, depois os cartões
+Abra direto no navegador: **https://fabianofca26-creator.github.io/financeiro/**
 
-No celular, vale usar "Adicionar à tela inicial" pelo menu do navegador — ele abre como se fosse um aplicativo.
+Ou baixe o [`index.html`](index.html) e abra com duplo clique — funciona igual, sem internet nenhuma.
+
+Depois vá em **Mais › Ajustes** e cadastre suas contas com o saldo de hoje, e então os cartões.
+
+No celular, use "Adicionar à tela inicial" pelo menu do navegador: ele passa a abrir como aplicativo, sem a barra do navegador.
 
 > **Seus dados ficam só no seu aparelho**, no `localStorage` do navegador. Nada é enviado para lugar nenhum. Isso também quer dizer que **limpar os dados de navegação apaga tudo** — exporte o backup de vez em quando. O app avisa quando passa de 7 dias sem backup.
 
@@ -73,12 +75,14 @@ O backup é um arquivo `.json` exportado pelo botão em **Ajustes**. Importar **
 
 Se usar no celular e no PC, escolha um como oficial (o celular, normalmente, que é onde você lança na hora) e deixe o outro só para consultar. Editar nos dois e importar depois faz um lado perder lançamentos.
 
+> **Escolha um endereço e fique nele.** O navegador guarda os dados separados por endereço, então o site e o arquivo baixado são **duas bases diferentes** — o que você lançar num não aparece no outro. Abrir sempre pelo mesmo lugar evita a impressão de que "sumiram os lançamentos".
+
 ## Testes
 
 Abra o arquivo com `?teste` no fim da URL e veja o console do navegador. Ele roda as asserções de conversão de dinheiro, divisão de parcelas, virada de mês, cálculo de fatura e um cenário completo de compra parcelada com reembolso parcial, além de conferir que todas as telas desenham sem erro.
 
 ```
-controle-financeiro.html?teste
+https://fabianofca26-creator.github.io/financeiro/?teste
 ```
 
 ## O que ele não faz
