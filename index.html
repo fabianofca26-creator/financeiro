@@ -1205,7 +1205,9 @@ if(location.search.includes('teste')){
   novo.devedorId=irmao.id; novo.devolve='80,00';
   const saldoAntesRateio=saldo('B');
   clk('[data-act="salvar"]');
-  const lanche=db.lanc.find(l=>l.desc==='Lanche');
+  /* já existe um "Lanche" do João neste cenário: procure pelo devedor, não pelo nome */
+  const lanche=db.lanc.find(l=>l.desc==='Lanche'&&l.devedorId===irmao.id);
+  ok(!!lanche,'o lançamento do rateio foi criado para o Irmão');
   ok(lanche.valor===12000&&lanche.naoMeu===8000&&meu(lanche)===4000,'rateio: 120 saiu, 80 é dele, 40 é meu');
   ok(saldo('B')===saldoAntesRateio-12000,'rateio tira o valor cheio da conta');
   tab='receber'; render();
