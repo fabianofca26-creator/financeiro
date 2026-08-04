@@ -2,7 +2,7 @@
 
 Controle de finanças pessoais em **um único arquivo HTML**. Sem instalar nada, sem servidor, sem conta, sem internet. Você baixa o arquivo, abre no navegador e usa.
 
-Feito para quem paga contas no cartão, parcela compras e ainda gasta dinheiro próprio em coisas de terceiros esperando reembolso depois.
+Feito para quem paga contas no cartão, parcela compras e vive pagando coisa que não é sua — reembolso da empresa, rateio de conta com amigos, empréstimo pra família — e precisa saber quanto disso vai voltar.
 
 ## Como usar
 
@@ -47,19 +47,31 @@ O saldo das contas é **regime de caixa**: só muda quando o dinheiro se move de
 
 Já o orçamento e os relatórios são **regime de competência**: uma compra no cartão conta no mês em que foi feita, não no mês em que a fatura é paga. Sem isso, o teto de "mercado" misturaria compras de dois meses diferentes e não serviria para nada.
 
-### Gastos de terceiros com reembolso
+### Quando alguém vai te devolver
 
-Um interruptor no lançamento marca o gasto como reembolsável. Ele:
+Um interruptor no lançamento abre dois campos: **de quem** é a dívida e **quanto** dela. A parte devida:
 
 - **sai do seu dinheiro / entra na fatura normalmente**, porque saiu mesmo;
-- **fica fora de todas as suas estatísticas**, porque o gasto não é seu;
-- **vira um crédito a receber**.
+- **fica fora das suas estatísticas**, porque essa parte não é gasto seu;
+- **vira um crédito a receber** daquela pessoa.
 
-Quando o reembolso cai, ele também **não conta como receita** — senão o "entrou no mês" ficaria inflado. É só o dinheiro voltando pro lugar.
+O que sobra continua sendo gasto seu, na categoria normal. É isso que faz o rateio funcionar:
 
-A tela **Empresa** lista o que está aguardando, agrupado por mês, destaca o que passou de 60 dias e gera uma lista pronta para copiar e mandar para quem faz o pagamento. Reembolso parcial deixa a diferença pendente; se ela nunca for paga, um botão transforma o valor em gasto seu.
+| Lanche de R$ 120, os amigos devem R$ 80 | |
+|---|---|
+| Sai da conta | R$ 120 |
+| Vira gasto seu | R$ 40, em "Alimentação fora" |
+| Vira dívida do João | R$ 80 |
 
-Compra parcelada com reembolso lança o crédito **cheio no mês da compra**, porque quem reembolsa costuma devolver tudo de uma vez enquanto as parcelas ainda estão correndo.
+Deixar o campo em branco quer dizer "me devem tudo", que é o caso do reembolso da empresa e do empréstimo. Empréstimo, por definição, não aparece em estatística nenhuma: não é consumo, é dinheiro que volta.
+
+Quando o pagamento cai, ele também **não conta como receita** — senão o "entrou no mês" ficaria inflado. É só o dinheiro voltando pro lugar.
+
+A tela **Me devem** separa **Empresa** (com lista pronta para copiar e mandar para quem faz o pagamento, e destaque no que passou de 60 dias) de **Pessoas**, agrupado por quem deve. Recebimento parcial deixa a diferença pendente; se ela nunca for paga, um botão transforma o valor em gasto seu.
+
+Compra parcelada lança o crédito **cheio no mês da compra**, porque quem deve costuma devolver tudo de uma vez enquanto as parcelas ainda estão correndo.
+
+As pessoas são cadastradas em **Ajustes › Pessoas que me devem**. A marcada como "empresa" é a que ganha a seção separada.
 
 ### Contas fixas
 
@@ -79,7 +91,7 @@ Se usar no celular e no PC, escolha um como oficial (o celular, normalmente, que
 
 ## Testes
 
-Abra o arquivo com `?teste` no fim da URL e veja o console do navegador. Ele roda as asserções de conversão de dinheiro, divisão de parcelas, virada de mês, cálculo de fatura e um cenário completo de compra parcelada com reembolso parcial, além de conferir que todas as telas desenham sem erro.
+Abra o arquivo com `?teste` no fim da URL e veja o console do navegador. Ele roda as asserções de conversão de dinheiro, divisão de parcelas, virada de mês, cálculo de fatura, a migração do formato antigo e um cenário completo de compra parcelada com rateio e recebimento parcial. Depois clica nos controles de verdade — cadastrar conta e pessoa, lançar um rateio, navegar pelo menu — porque testar só as funções já deixou passar um bug que travava todos os botões das janelas.
 
 ```
 https://fabianofca26-creator.github.io/financeiro/?teste

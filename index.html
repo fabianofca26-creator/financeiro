@@ -185,17 +185,36 @@ const CATS_PADRAO=[
 let db;
 function novoDb(){
   return {
-    v:1,
+    v:2,
     contas:[{id:uid(),nome:'Dinheiro',tipo:'dinheiro',saldoInicial:0,arq:false}],
     cats:CATS_PADRAO.map(([nome,tipo])=>({id:uid(),nome,tipo,arq:false})),
+    pessoas:[{id:uid(),nome:'Empresa',empresa:true,arq:false}],
     orc:{}, fixas:[], lanc:[], backup:0
   };
+}
+/* v1 só sabia dever para "a empresa"; v2 tem devedor e valor devido parcial */
+function migrar(){
+  if(db.v>=2)return;
+  if(!Array.isArray(db.pessoas)||!db.pessoas.length)
+    db.pessoas=[{id:uid(),nome:'Empresa',empresa:true,arq:false}];
+  const emp=db.pessoas.find(p=>p.empresa)||db.pessoas[0];
+  for(const l of db.lanc){
+    if(l.empresa){ l.devedorId=emp.id; l.naoMeu=l.valor; }
+    if(l.credEmpresa>0||l.credTotal>0){
+      l.cred=l.credEmpresa||0;
+      l.credTotal=l.credTotal||l.credEmpresa||0;
+      l.devedorId=l.devedorId||emp.id;
+    }
+    delete l.credEmpresa;
+  }
+  db.v=2;
 }
 function load(){
   try{db=JSON.parse(localStorage.getItem(K));}catch(e){db=null}
   if(!db||!db.contas)db=novoDb();
-  for(const k of ['contas','cats','fixas','lanc'])if(!Array.isArray(db[k]))db[k]=[];
+  for(const k of ['contas','cats','fixas','lanc','pessoas'])if(!Array.isArray(db[k]))db[k]=[];
   if(!db.orc)db.orc={};
+  migrar();
 }
 const save=()=>localStorage.setItem(K,JSON.stringify(db));
 
@@ -206,6 +225,10 @@ const isCartao=id=>{const c=conta(id);return !!c&&c.tipo==='cartao'};
 const contasAtivas=(inclCartao=true)=>db.contas.filter(c=>!c.arq&&(inclCartao||c.tipo!=='cartao'));
 const cartoes=()=>db.contas.filter(c=>c.tipo==='cartao'&&!c.arq);
 const nomeConta=id=>{const c=conta(id);return c?c.nome:'?'};
+const pessoa=id=>db.pessoas.find(p=>p.id===id);
+const pessoasAtivas=()=>db.pessoas.filter(p=>!p.arq);
+const nomePessoa=id=>{const p=pessoa(id);return p?p.nome:'alguém'};
+const ehEmpresa=id=>{const p=pessoa(id);return !!p&&!!p.empresa};
 
 /* qual fatura recebe uma compra: até o dia do fechamento entra na fatura do próprio mês */
 function faturaRef(c,data){
@@ -268,18 +291,29 @@ function previsto(ym){
   }
   return s;
 }
-/* crédito da empresa ainda não devolvido */
-const aReceber=()=>db.lanc.reduce((s,l)=>s+(l.credEmpresa||0),0);
-const itensReceber=()=>db.lanc.filter(l=>(l.credEmpresa||0)>0).sort((a,b)=>a.data<b.data?-1:1);
+/* o que ainda não voltou. `cred` é o que falta receber, `credTotal` o combinado */
+const aReceber=(filtro)=>itensReceber(filtro).reduce((s,l)=>s+l.cred,0);
+const itensReceber=(filtro)=>db.lanc.filter(l=>(l.cred||0)>0&&(!filtro||filtro(l)))
+                                    .sort((a,b)=>a.data<b.data?-1:1);
+const daEmpresa=l=>ehEmpresa(l.devedorId);
+/* devedores com saldo em aberto, empresa primeiro */
+function devedores(){
+  const mp=new Map();
+  for(const l of itensReceber())mp.set(l.devedorId,(mp.get(l.devedorId)||0)+l.cred);
+  return [...mp].map(([id,v])=>({id,v,nome:nomePessoa(id),empresa:ehEmpresa(id)}))
+                .sort((a,b)=>(b.empresa-a.empresa)||(b.v-a.v));
+}
 
-/* estatísticas: regime de competência (data do lançamento), sem nada da empresa */
-const contaEstat=l=>!l.empresa&&(l.tipo==='saida'||l.tipo==='entrada');
-function gastosMes(ym){return db.lanc.filter(l=>l.tipo==='saida'&&!l.empresa&&mesDe(l.data)===ym)}
-function receitasMes(ym){return db.lanc.filter(l=>l.tipo==='entrada'&&!l.empresa&&mesDe(l.data)===ym)}
+/* estatísticas: regime de competência (data do lançamento).
+   `meu` é a fatia do lançamento que é gasto seu — num rateio, só a sua parte. */
+const meu=l=>Math.max(0,l.valor-(l.naoMeu||0));
+function gastosMes(ym){return db.lanc.filter(l=>l.tipo==='saida'&&mesDe(l.data)===ym&&meu(l)>0)}
+function receitasMes(ym){return db.lanc.filter(l=>l.tipo==='entrada'&&mesDe(l.data)===ym)}
 const soma=a=>a.reduce((s,l)=>s+l.valor,0);
+const somaMeu=a=>a.reduce((s,l)=>s+meu(l),0);
 function porCategoria(ym){
   const mp={};
-  for(const l of gastosMes(ym))mp[l.catId||'-']=(mp[l.catId||'-']||0)+l.valor;
+  for(const l of gastosMes(ym))mp[l.catId||'-']=(mp[l.catId||'-']||0)+meu(l);
   return Object.entries(mp).sort((a,b)=>b[1]-a[1]);
 }
 
@@ -304,7 +338,7 @@ function gerarFixas(){
 /* ============ UI ============ */
 let tab='inicio', mes=mesDe(hoje());
 const TITULO={inicio:'Início',lancar:'Lançar',extrato:'Extrato',cartoes:'Cartões',
-  empresa:'Empresa',orcamento:'Orçamento',relatorio:'Relatório',config:'Ajustes'};
+  receber:'Me devem',orcamento:'Orçamento',relatorio:'Relatório',config:'Ajustes'};
 /* telas que dependem do mês mostram o seletor no cabeçalho; as outras, não */
 const POR_MES=['inicio','extrato','cartoes','orcamento','relatorio'];
 const ICO={
@@ -312,7 +346,7 @@ const ICO={
   extrato:'<path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 9h6M9 13h4"/>',
   lancar:'<path d="M12 5v14M5 12h14"/>',
   cartoes:'<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>',
-  empresa:'<path d="M4 20V9l8-5 8 5v11"/><path d="M9.5 20v-5h5v5"/>',
+  receber:'<path d="M4 20V9l8-5 8 5v11"/><path d="M9.5 20v-5h5v5"/>',
   orcamento:'<path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 2.6A8.5 8.5 0 0 1 21.4 9H15z"/>',
   relatorio:'<path d="M5 19V11M12 19V5M19 19v-6"/>',
   config:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.6 4.4a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.8 1z"/>',
@@ -320,7 +354,7 @@ const ICO={
 };
 const svg=k=>`<svg viewBox="0 0 24 24">${ICO[k]}</svg>`;
 const BARRA=['inicio','extrato','lancar','cartoes','mais'];
-const NO_MENU=['empresa','orcamento','relatorio','config'];
+const NO_MENU=['receber','orcamento','relatorio','config'];
 
 function toast(t){
   document.querySelectorAll('.toast').forEach(e=>e.remove());
@@ -348,7 +382,7 @@ function menu(){
   $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
     <div class="grab"></div><div class="menu">
     ${NO_MENU.map(k=>`<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}<span>${TITULO[k]}</span>
-      ${k==='empresa'&&ar>0?`<span class="rt empc">${R(ar)}</span>`:''}</button>`).join('')}
+      ${k==='receber'&&ar>0?`<span class="rt empc">${R(ar)}</span>`:''}</button>`).join('')}
     </div></div></div>`;
 }
 
@@ -363,7 +397,7 @@ function hero(){
 /* ---- Início ---- */
 function vInicio(){
   const ar=aReceber();
-  const g=soma(gastosMes(mes)), r=soma(receitasMes(mes));
+  const g=somaMeu(gastosMes(mes)), r=soma(receitasMes(mes));
   const h=hoje(), lim=new Date(Date.now()+7*864e5).toISOString().slice(0,10);
   const venc=db.lanc.filter(l=>!l.pago&&!l.ajuste&&!isCartao(l.contaId)&&l.data<=lim&&(l.tipo==='saida'||l.tipo==='entrada'))
                     .sort((a,b)=>a.data<b.data?-1:1);
@@ -384,8 +418,8 @@ function vInicio(){
     <div><small>Entrou em ${lblMes(mes)}</small><b class="pos">${R(r)}</b></div>
     <div><small>Saiu em ${lblMes(mes)}</small><b class="neg">${R(g)}</b></div>
   </div>
-  ${ar>0?`<div class="strip" data-tab="empresa">
-    <div><div class="t empc">A receber da empresa</div><div class="sub">${itensReceber().length} lançamento(s) — toque para ver</div></div>
+  ${ar>0?`<div class="strip" data-tab="receber">
+    <div><div class="t empc">Me devem</div><div class="sub">${devedores().map(d=>d.nome).join(', ')} — toque para ver</div></div>
     <div class="v empc" style="font-size:18px">${R(ar)}</div></div>`:''}
   ${bkp}
   <div class="c"><h2>Vence nos próximos 7 dias</h2>
@@ -405,7 +439,7 @@ function linhaLanc(l){
   if(l.tipo==='transf')dir=`${esc(nomeConta(l.contaId))} → ${esc(nomeConta(l.destId))}`;
   else if(l.tipo==='fatura')dir=`${esc(nomeConta(l.contaId))} → ${esc(nomeConta(l.destId))}`;
   else dir=esc(nomeConta(l.contaId))+(l.catId&&cat(l.catId)?' · '+esc(cat(l.catId).nome):'');
-  if(l.empresa)tags+=' <span class="tag e">empresa</span>';
+  if(l.devedorId)tags+=` <span class="tag e">${esc(nomePessoa(l.devedorId))}</span>`;
   if(l.parcs>1)tags+=` <span class="tag k">${l.parc}/${l.parcs}</span>`;
   if(!l.pago&&!l.ajuste&&(l.tipo==='saida'||l.tipo==='entrada'))tags+=' <span class="tag p">pendente</span>';
   if(l.ajuste)tags+=' <span class="tag k">ajuste</span>';
@@ -414,10 +448,13 @@ function linhaLanc(l){
 }
 
 /* ---- Lançar ---- */
-let novo={tipo:'saida',data:hoje(),desc:'',valor:'',contaId:'',catId:'',destId:'',parcs:1,empresa:false,pago:true};
+const novoVazio=()=>({tipo:'saida',data:hoje(),desc:'',valor:'',contaId:'',catId:'',destId:'',
+  parcs:1,devem:false,devedorId:'',devolve:'',pago:true});
+let novo=novoVazio();
 function vLancar(){
   const cs=contasAtivas(true);
   if(!novo.contaId&&cs.length)novo.contaId=cs[0].id;
+  if(novo.devem&&!novo.devedorId&&pessoasAtivas().length)novo.devedorId=pessoasAtivas()[0].id;
   const cartao=isCartao(novo.contaId);
   const cats=db.cats.filter(c=>!c.arq&&c.tipo===novo.tipo);
   const opts=(arr,sel,key='nome')=>arr.map(o=>`<option value="${o.id}" ${o.id===sel?'selected':''}>${esc(o[key])}</option>`).join('');
@@ -446,9 +483,15 @@ function vLancar(){
     </div>
     <label>Descrição</label><input data-f="desc" placeholder="Ex: mercado da esquina" value="${esc(novo.desc)}">
     <label>Conta</label><select data-f="contaId" data-r>${opts(cs,novo.contaId)}</select>
-    ${novo.tipo==='saida'?`<div class="chk"><input type="checkbox" data-f="empresa" data-r ${novo.empresa?'checked':''}><span>Empresa (reembolsável)</span></div>
-      ${novo.empresa?'<div class="hint">Sai do seu dinheiro normalmente, mas fica de fora de todas as suas estatísticas e vira crédito a receber.</div>':''}`:''}
-    ${!novo.empresa?`<label>Categoria</label><select data-f="catId">${opts(cats,novo.catId)}</select>`:''}
+    ${novo.tipo==='saida'?`<div class="chk"><input type="checkbox" data-f="devem" data-r ${novo.devem?'checked':''}><span>Alguém vai me devolver</span></div>
+      ${novo.devem?(pessoasAtivas().length?`
+        <div class="g2">
+          <div><label>De quem</label><select data-f="devedorId">${opts(pessoasAtivas(),novo.devedorId)}</select></div>
+          <div><label>Quanto me devem</label><input data-f="devolve" inputmode="decimal" placeholder="${esc(novo.valor)||'0,00'}" value="${esc(novo.devolve)}"></div>
+        </div>
+        <div class="hint">${dicaRateio()}</div>`
+        :'<div class="hint">Cadastre uma pessoa em Ajustes › Pessoas primeiro.</div>'):''}`:''}
+    <label>Categoria</label><select data-f="catId">${opts(cats,novo.catId)}</select>
     ${cartao?`<label>Parcelas</label><input data-f="parcs" type="number" min="1" max="48" value="${novo.parcs}" data-r>
       ${novo.parcs>1?`<div class="hint">${previewParcelas()}</div>`:''}
       <div class="hint">Compra no cartão entra na fatura de <b>${lblMes(faturaRef(conta(novo.contaId),novo.data))}</b>.</div>`
@@ -459,6 +502,16 @@ function vLancar(){
 function segTipo(){
   return `<div class="seg">${[['saida','Saída'],['entrada','Entrada'],['transf','Transferência']]
     .map(([k,l])=>`<button data-tp="${k}" class="${novo.tipo===k?'on':''}">${l}</button>`).join('')}</div>`;
+}
+/* deixa a divisão visível antes de salvar, que é onde o erro de rateio aparece */
+function dicaRateio(){
+  const v=parseMoney(novo.valor);
+  const d=novo.devolve.trim()?parseMoney(novo.devolve):v;
+  const quem=esc(nomePessoa(novo.devedorId));
+  if(!v)return `Deixe em branco se te devem o valor inteiro.`;
+  if(d>=v)return `Nada disso entra nas suas estatísticas — <b>${quem}</b> te deve os ${R(v)}.`;
+  if(d<=0)return `Sem dívida: os ${R(v)} contam como gasto seu.`;
+  return `Gasto seu: <b>${R(v-d)}</b> · <b>${quem}</b> te deve <b class="empc">${R(d)}</b>.`;
 }
 function previewParcelas(){
   const v=parseMoney(novo.valor), n=+novo.parcs;
@@ -484,21 +537,27 @@ function salvar(){
     const cartao=isCartao(novo.contaId);
     const n=cartao?Math.max(1,Math.min(48,+novo.parcs||1)):1;
     const partes=divide(v,n), compraId=uid();
+    /* quanto do total não é gasto seu; em branco = te devem tudo */
+    const devem=novo.tipo==='saida'&&novo.devem&&novo.devedorId;
+    const dev=devem?Math.min(v,novo.devolve.trim()?parseMoney(novo.devolve):v):0;
+    const fatias=divide(dev,n);   /* a parte devida acompanha cada parcela... */
     for(let i=0;i<n;i++){
       db.lanc.push({id:uid(),tipo:novo.tipo,data:i?addMesData(novo.data,i):novo.data,
         desc:novo.desc||'(sem descrição)',valor:partes[i],
-        catId:novo.empresa?null:novo.catId,contaId:novo.contaId,
+        catId:novo.catId,contaId:novo.contaId,
         pago:cartao?true:!!novo.pago,
-        empresa:novo.tipo==='saida'&&!!novo.empresa,
-        /* reembolso vem inteiro no mês da compra: o crédito fica todo na 1ª parcela */
-        credEmpresa:(novo.tipo==='saida'&&novo.empresa&&i===0)?v:0,
-        credTotal:(novo.tipo==='saida'&&novo.empresa&&i===0)?v:0,
+        devedorId:dev>0?novo.devedorId:null,
+        naoMeu:dev>0?fatias[i]:0,
+        /* ...mas a cobrança vem inteira no mês da compra, então o crédito fica todo na 1ª */
+        cred:(dev>0&&i===0)?dev:0,
+        credTotal:(dev>0&&i===0)?dev:0,
         compraId:n>1?compraId:null,parc:n>1?i+1:null,parcs:n>1?n:null});
     }
   }
   save();
   const d=novo.data;
-  novo={tipo:novo.tipo,data:d,desc:'',valor:'',contaId:novo.contaId,catId:novo.catId,destId:novo.destId,parcs:1,empresa:false,pago:true};
+  novo={...novoVazio(),tipo:novo.tipo,data:d,contaId:novo.contaId,catId:novo.catId,
+        destId:novo.destId,devedorId:novo.devedorId};
   toast('Lançado');
   tab='extrato'; mes=mesDe(d); render();
 }
@@ -508,11 +567,11 @@ let filtro='todos';
 function vExtrato(){
   let ls=db.lanc.filter(l=>mesDe(l.data)===mes);
   if(filtro==='pend')ls=ls.filter(l=>!l.pago&&!l.ajuste);
-  if(filtro==='emp')ls=ls.filter(l=>l.empresa);
+  if(filtro==='emp')ls=ls.filter(l=>l.devedorId);
   if(filtro==='saida')ls=ls.filter(l=>l.tipo==='saida'||l.tipo==='fatura');
   if(filtro==='entrada')ls=ls.filter(l=>l.tipo==='entrada'||l.tipo==='reemb');
   ls.sort((a,b)=>a.data<b.data?1:(a.data>b.data?-1:0));
-  const f=[['todos','Todos'],['saida','Saídas'],['entrada','Entradas'],['pend','Pendentes'],['emp','Empresa']];
+  const f=[['todos','Todos'],['saida','Saídas'],['entrada','Entradas'],['pend','Pendentes'],['emp','Me devem']];
   return `<div class="c"><div class="seg" style="flex-wrap:wrap">${f.map(([k,l])=>`<button data-fl="${k}" class="${filtro===k?'on':''}" style="flex:1 1 auto">${l}</button>`).join('')}</div></div>
   <div class="c">${ls.length?ls.map(linhaLanc).join(''):'<div class="empty">Nenhum lançamento em '+lblMes(mes)+'.</div>'}</div>`;
 }
@@ -527,11 +586,11 @@ function vCartoes(){
     const futuro=refs.filter(r=>r>atual).reduce((s,r)=>s+faturaAberto(c.id,r),0);
     const linhas=refs.filter(r=>faturaTotal(c.id,r)>0||r===atual).sort((a,b)=>a<b?1:-1).map(r=>{
       const t=faturaTotal(c.id,r), ab=faturaAberto(c.id,r), aberta=faturaEmAberto(c,r);
-      const it=faturaItens(c.id,r), emp=it.filter(l=>l.empresa).reduce((s,l)=>s+l.valor,0);
+      const it=faturaItens(c.id,r), emp=it.reduce((s,l)=>s+(l.naoMeu||0),0);
       const v=faturaVenc(c,r);
       const st=ab<=0&&t>0?'<span class="tag k">paga</span>':(aberta?'<span class="tag k">em aberto</span>':(v<hoje()?'<span class="tag p">vencida</span>':'<span class="tag p">a pagar</span>'));
       return `<div class="row"><div class="l"><div class="t">${lblMes(r)} ${st}</div>
-        <div class="sub">vence ${dDia(v)}${emp?` · <span class="empc">${R(emp)} da empresa</span>`:''} · ${it.length} item(ns)</div>
+        <div class="sub">vence ${dDia(v)}${emp?` · <span class="empc">${R(emp)} de terceiros</span>`:''} · ${it.length} item(ns)</div>
         ${ab>0&&!aberta?`<div style="margin-top:7px"><button class="s p" data-pagfat="${c.id}|${r}">Pagar ${R(ab)}</button> <button class="s" data-vfat="${c.id}|${r}">Ver itens</button></div>`
           :`<div style="margin-top:7px"><button class="s" data-vfat="${c.id}|${r}">Ver itens</button></div>`}</div>
         <div class="v ${ab>0?'neg':'mutc'}">${R(t)}</div></div>`;
@@ -545,52 +604,63 @@ function vCartoes(){
       ${c.limite?`<div class="bar"><i class="${usado/c.limite>.9?'d':(usado/c.limite>.7?'w':'')}" style="width:${Math.min(100,usado/c.limite*100)}%"></i></div>
         <div class="hint">Limite ${R(c.limite)} · disponível ${R(Math.max(0,c.limite-usado))}</div>`:''}
       <div style="margin-top:6px">${linhas||'<div class="empty">Sem movimento.</div>'}</div>
-      <div class="hint">“Parcelas de meses futuros” já inclui compras da empresa — esse dinheiro tem dono.</div></div>`;
+      <div class="hint">“Parcelas de meses futuros” já inclui o que é de terceiros — esse dinheiro tem dono.</div></div>`;
   }).join('');
 }
 
-/* ---- Empresa ---- */
+/* ---- Me devem ---- */
 let sel=new Set();
-function vEmpresa(){
-  const its=itensReceber();
-  const total=its.reduce((s,l)=>s+l.credEmpresa,0);
-  const selTot=its.filter(l=>sel.has(l.id)).reduce((s,l)=>s+l.credEmpresa,0);
-  const h=hoje();
+function linhaDeve(l,h){
+  const atraso=diasEntre(l.data,h);
+  const parcial=l.cred<l.credTotal;
+  return `<div class="it"><input type="checkbox" data-sel="${l.id}" ${sel.has(l.id)?'checked':''}>
+    <div class="l" style="flex:1;min-width:0"><div class="t">${esc(l.desc)}</div>
+    <div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))}${parcial?` · recebido ${R(l.credTotal-l.cred)} de ${R(l.credTotal)}`:''}${atraso>60?` · <span class="wnc">aguardando ${atraso} dias</span>`:''}</div></div>
+    <div class="v empc">${R(l.cred)}</div>
+    <button class="s" data-desistir="${l.id}" title="Virar gasto meu">✕</button></div>`;
+}
+function vReceber(){
+  const h=hoje(), total=aReceber(), selTot=itensReceber().filter(l=>sel.has(l.id)).reduce((s,l)=>s+l.cred,0);
+  const emp=itensReceber(daEmpresa);
+  const pess=devedores().filter(d=>!d.empresa);
   const recs=db.lanc.filter(l=>l.tipo==='reemb').sort((a,b)=>a.data<b.data?1:-1).slice(0,12);
-  let ultMes='';
-  const linhas=its.map(l=>{
-    let cab='';
-    if(mesDe(l.data)!==ultMes){ultMes=mesDe(l.data);cab=`<div class="sub" style="margin-top:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${lblMes(ultMes)}</div>`}
-    const atraso=diasEntre(l.data,h);
-    const parcial=l.credEmpresa<l.credTotal;
-    return cab+`<div class="it"><input type="checkbox" data-sel="${l.id}" ${sel.has(l.id)?'checked':''}>
-      <div class="l" style="flex:1;min-width:0"><div class="t">${esc(l.desc)}</div>
-      <div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))}${parcial?` · recebido ${R(l.credTotal-l.credEmpresa)} de ${R(l.credTotal)}`:''}${atraso>60?` · <span class="wnc">aguardando ${atraso} dias</span>`:''}</div></div>
-      <div class="v empc">${R(l.credEmpresa)}</div>
-      <button class="s" data-desistir="${l.id}" title="Virar gasto meu">✕</button></div>`;
-  }).join('');
 
-  return `<div class="c">
-    <div class="big"><div><small>A receber da empresa</small><strong class="empc">${R(total)}</strong>
-    <div class="sub">${its.length} lançamento(s)</div></div></div>
-    ${its.length?`<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
-      <button class="s" data-act="sel-tudo">Selecionar tudo</button>
-      <button class="s" data-act="sel-nada">Limpar</button>
+  /* empresa costuma ter rito próprio: lista pra conferência e prazo */
+  const secEmpresa=emp.length?`<div class="c"><h2>Empresa</h2>
+    <div class="big"><div><small>A receber</small><strong class="empc">${R(emp.reduce((s,l)=>s+l.cred,0))}</strong>
+    <div class="sub">${emp.length} lançamento(s)</div></div></div>
+    <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+      <button class="s" data-act="sel-emp">Selecionar tudo</button>
       <button class="s" data-act="copiar">Copiar lista</button>
     </div>
-    ${linhas}
-    <button class="b" data-act="reembolso" ${selTot?'':'disabled style="opacity:.5"'}>Registrar reembolso${selTot?' — '+R(selTot):''}</button>
-    <div class="hint">O ✕ tira o item do “a receber” e transforma o valor em gasto seu (quando a empresa não vai pagar mesmo).</div>`
-    :'<div class="empty">Nada aguardando reembolso.<br><span style="font-size:12px">Marque “Empresa (reembolsável)” ao lançar um gasto.</span></div>'}
+    ${emp.map(l=>linhaDeve(l,h)).join('')}</div>`:'';
+
+  const secPessoas=pess.length?`<div class="c"><h2>Pessoas</h2>
+    ${pess.map(d=>`<div class="row" style="border-bottom:0;padding-bottom:2px">
+        <div class="l"><div class="t">${esc(d.nome)}</div></div>
+        <div class="v empc">${R(d.v)}</div>
+        <button class="s" data-selp="${d.id}">Marcar</button></div>
+      ${itensReceber(l=>l.devedorId===d.id).map(l=>linhaDeve(l,h)).join('')}`).join('')}
+    </div>`:'';
+
+  return `<div class="c">
+    <div class="big"><div><small>Total a receber</small><strong class="empc">${R(total)}</strong>
+    <div class="sub">${itensReceber().length} lançamento(s)</div></div></div>
+    ${total?`<button class="b" data-act="reembolso" ${selTot?'':'disabled style="opacity:.5"'}>Registrar recebimento${selTot?' — '+R(selTot):''}</button>
+      <button class="b gh" data-act="sel-nada">Limpar seleção</button>
+      <div class="hint">Marque os itens que entraram no pagamento e registre. O ✕ tira o item da lista e vira gasto seu, para quando você desistir de cobrar.</div>`
+     :'<div class="empty">Ninguém te deve nada.<br><span style="font-size:12px">Marque “Alguém vai me devolver” ao lançar um gasto.</span></div>'}
   </div>
-  ${recs.length?`<div class="c"><h2>Reembolsos recebidos</h2>${recs.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}</div><div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))} · ${(l.itens||[]).length} item(ns)</div></div><div class="v empc">+${R(l.valor)}</div></div>`).join('')}</div>`:''}`;
+  ${secEmpresa}${secPessoas}
+  ${recs.length?`<div class="c"><h2>Recebimentos</h2>${recs.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}</div><div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))} · ${(l.itens||[]).length} item(ns)</div></div><div class="v empc">+${R(l.valor)}</div></div>`).join('')}</div>`:''}`;
 }
 
 function registrarReembolso(){
   const its=itensReceber().filter(l=>sel.has(l.id));
   if(!its.length)return;
-  const tot=its.reduce((s,l)=>s+l.credEmpresa,0);
-  formModal('Registrar reembolso',[
+  const tot=its.reduce((s,l)=>s+l.cred,0);
+  const quem=[...new Set(its.map(l=>nomePessoa(l.devedorId)))];
+  formModal('Registrar recebimento',[
     {k:'valor',label:'Valor recebido',type:'text',v:fmt(tot)},
     {k:'contaId',label:'Caiu em qual conta',type:'select',opts:contasAtivas(false),v:contasAtivas(false)[0]?.id},
     {k:'data',label:'Data',type:'date',v:hoje()}
@@ -598,22 +668,22 @@ function registrarReembolso(){
     let v=parseMoney(d.valor);
     if(v<=0)return toast('Valor inválido');
     if(v>tot)return toast('Valor maior que o total selecionado');
-    db.lanc.push({id:uid(),tipo:'reemb',data:d.data,desc:'Reembolso empresa',valor:v,
+    db.lanc.push({id:uid(),tipo:'reemb',data:d.data,desc:'Recebido de '+quem.join(', '),valor:v,
       contaId:d.contaId,pago:true,itens:its.map(l=>l.id)});
     /* abate do mais antigo pro mais novo; o que não cobrir continua pendente */
     for(const l of its){
       if(v<=0)break;
-      const usa=Math.min(v,l.credEmpresa);
-      l.credEmpresa-=usa; v-=usa;
+      const usa=Math.min(v,l.cred);
+      l.cred-=usa; v-=usa;
     }
-    sel.clear(); save(); toast('Reembolso registrado'); render();
-  });
+    sel.clear(); save(); toast('Recebimento registrado'); render();
+  },`De: <b>${esc(quem.join(', '))}</b> · ${its.length} item(ns)`);
 }
 function copiarLista(){
-  const its=itensReceber().filter(l=>sel.size?sel.has(l.id):true);
+  const its=itensReceber(daEmpresa).filter(l=>sel.size?sel.has(l.id):true);
   if(!its.length)return toast('Nada para copiar');
-  const txt=its.map(l=>`${dDia(l.data)}  ${l.desc}  R$ ${fmt(l.credEmpresa)}`).join('\n')
-    +`\n${'-'.repeat(28)}\nTOTAL  R$ ${fmt(its.reduce((s,l)=>s+l.credEmpresa,0))}`;
+  const txt=its.map(l=>`${dDia(l.data)}  ${l.desc}  R$ ${fmt(l.cred)}`).join('\n')
+    +`\n${'-'.repeat(28)}\nTOTAL  R$ ${fmt(its.reduce((s,l)=>s+l.cred,0))}`;
   navigator.clipboard?.writeText(txt).then(()=>toast('Lista copiada'),()=>fallbackCopy(txt));
 }
 function fallbackCopy(t){
@@ -623,13 +693,13 @@ function fallbackCopy(t){
 }
 function desistir(id){
   const l=db.lanc.find(x=>x.id===id); if(!l)return;
-  formModal(`Desistir de ${R(l.credEmpresa)}?`,[
+  formModal(`Desistir de ${R(l.cred)}?`,[
     {k:'catId',label:'Vira gasto seu em qual categoria',type:'select',opts:db.cats.filter(c=>c.tipo==='saida'&&!c.arq)}
   ],d=>{
-    db.lanc.push({id:uid(),tipo:'saida',data:hoje(),desc:l.desc+' (não reembolsado)',valor:l.credEmpresa,
+    db.lanc.push({id:uid(),tipo:'saida',data:hoje(),desc:l.desc+` (${nomePessoa(l.devedorId)} não pagou)`,valor:l.cred,
       catId:d.catId,contaId:l.contaId,pago:true,ajuste:true});
-    l.credEmpresa=0; save(); toast('Virou gasto seu'); render();
-  },'O dinheiro já saiu quando você comprou — isso só faz o valor entrar nas suas estatísticas.');
+    l.cred=0; save(); toast('Virou gasto seu'); render();
+  },'O dinheiro já saiu quando você pagou — isso só faz o valor entrar nas suas estatísticas.');
 }
 
 /* ---- Orçamento ---- */
@@ -656,14 +726,14 @@ function vOrcamento(){
   ${cs.map(c=>`<div class="row"><div class="l"><div class="t">${esc(c.nome)}</div>
     <div class="sub">gasto em ${lblMes(mes)}: ${R(mp[c.id]||0)}</div></div>
     <input style="width:110px;text-align:right" inputmode="decimal" data-teto="${c.id}" value="${db.orc[c.id]?fmt(db.orc[c.id]):''}" placeholder="sem teto"></div>`).join('')}
-  <div class="hint">Deixe vazio para a categoria não aparecer no orçamento. Gastos da empresa nunca entram aqui.</div></div>`;
+  <div class="hint">Deixe vazio para a categoria não aparecer no orçamento. Só entra aqui a parte que é gasto seu: num rateio, a sua fatia.</div></div>`;
 }
 
 /* ---- Relatório ---- */
 function vRelatorio(){
   const gm=porCategoria(mes), tot=gm.reduce((s,[,v])=>s+v,0);
   const meses=[]; for(let i=5;i>=0;i--)meses.push(addMes(mes,-i));
-  const max=Math.max(1,...meses.map(m=>Math.max(soma(gastosMes(m)),soma(receitasMes(m)))));
+  const max=Math.max(1,...meses.map(m=>Math.max(somaMeu(gastosMes(m)),soma(receitasMes(m)))));
   return `<div class="c"><h2>Para onde foi o dinheiro — ${lblMes(mes)}</h2>
   ${gm.length?gm.map(([id,v])=>{
     const c=cat(id);
@@ -676,7 +746,7 @@ function vRelatorio(){
 
   <div class="c"><h2>Últimos 6 meses</h2>
   ${meses.map(m=>{
-    const g=soma(gastosMes(m)),r=soma(receitasMes(m)),d=r-g;
+    const g=somaMeu(gastosMes(m)),r=soma(receitasMes(m)),d=r-g;
     return `<div style="padding:9px 0;border-bottom:1px solid var(--bd)">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <b class="clk" data-mes="${m}">${lblMes(m)}</b>
@@ -688,7 +758,7 @@ function vRelatorio(){
         <div class="bar" style="flex:1"><i class="d" style="width:${g/max*100}%"></i></div>
         <span class="sub neg" style="width:88px;text-align:right">${R(g)}</span></div></div>`;
   }).join('')}
-  <div class="hint">Compra no cartão conta no mês em que foi feita, não no mês da fatura. Gastos da empresa ficam de fora.</div></div>`;
+  <div class="hint">Compra no cartão conta no mês em que foi feita, não no mês da fatura. O que outros te devem fica de fora — num rateio, só a sua fatia conta.</div></div>`;
 }
 
 /* ---- Config ---- */
@@ -715,6 +785,13 @@ function vConfig(){
     <button class="s" data-ed="fixa|${f.id}">Editar</button></div>`).join(''):'<div class="empty">Nenhuma conta fixa.</div>'}
   <button class="b gh" data-ed="fixa|">+ Nova fixa</button>
   <div class="hint">Nascem sozinhas como pendentes quando o mês vira. Se marcar “valor estimado”, ao pagar com valor diferente o app aprende o novo valor.</div></div>
+
+  <div class="c"><h2>Pessoas que me devem</h2>
+  ${db.pessoas.map(p=>`<div class="row"><div class="l"><div class="t">${esc(p.nome)}${p.empresa?' <span class="tag e">empresa</span>':''}${p.arq?' <span class="tag k">arquivada</span>':''}</div>
+    <div class="sub">a receber: ${R(aReceber(l=>l.devedorId===p.id))}</div></div>
+    <button class="s" data-ed="pessoa|${p.id}">Editar</button></div>`).join('')}
+  <button class="b gh" data-ed="pessoa|">+ Nova pessoa</button>
+  <div class="hint">Quem está marcado como “empresa” aparece numa seção separada em Me devem, com lista para conferência.</div></div>
 
   <div class="c"><h2>Categorias</h2>
   ${['saida','entrada'].map(t=>`<div class="sub" style="margin-top:8px;font-weight:700;text-transform:uppercase">${t==='saida'?'Saídas':'Entradas'}</div>`
@@ -789,6 +866,19 @@ function editar(tipo,id){
       save();fecharMdl();render();
     });
   }
+  if(tipo==='pessoa'){
+    const p=id?pessoa(id):null;
+    formModal(p?'Editar pessoa':'Nova pessoa',[
+      {k:'nome',label:'Nome',v:p?.nome,ph:'Ex: João, Irmão, Empresa'},
+      {k:'empresa',label:'É a empresa (seção separada)',type:'check',v:p?.empresa},
+      ...(p?[{k:'arq',label:'Arquivada',type:'check',v:p.arq}]:[])
+    ],d=>{
+      if(!d.nome.trim())return toast('Dê um nome');
+      if(p)Object.assign(p,{nome:d.nome,empresa:!!d.empresa,arq:!!d.arq});
+      else db.pessoas.push({id:uid(),nome:d.nome,empresa:!!d.empresa,arq:false});
+      save();fecharMdl();render();
+    });
+  }
   if(tipo==='cat'){
     const c=id?cat(id):null;
     formModal(c?'Editar categoria':'Nova categoria',[
@@ -830,7 +920,8 @@ function abrirLanc(id){
   const pod=(l.tipo==='saida'||l.tipo==='entrada')&&!isCartao(l.contaId)&&!l.ajuste;
   $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
     <h3>${esc(l.desc)}</h3>
-    <div class="sub">${dDia(l.data)} · ${R(l.valor)} · ${esc(nomeConta(l.contaId))}${l.parcs>1?` · parcela ${l.parc}/${l.parcs}`:''}${l.empresa?' · empresa':''}</div>
+    <div class="sub">${dDia(l.data)} · ${R(l.valor)} · ${esc(nomeConta(l.contaId))}${l.parcs>1?` · parcela ${l.parc}/${l.parcs}`:''}</div>
+    ${l.naoMeu>0?`<div class="hint">Gasto seu: <b>${R(meu(l))}</b> · <b>${esc(nomePessoa(l.devedorId))}</b> deve <b class="empc">${R(l.naoMeu)}</b></div>`:''}
     ${pod?`<button class="b" data-act="pago|${id}">${l.pago?(l.tipo==='saida'?'Desmarcar pago':'Desmarcar recebido'):(l.tipo==='saida'?'Marcar como pago':'Marcar como recebido')}</button>`:''}
     <button class="b gh" data-act="editar-lanc|${id}">Editar</button>
     <button class="b dg" data-act="excluir|${id}">Excluir${l.parcs>1?' compra inteira':''}</button>
@@ -854,22 +945,26 @@ function editarLanc(id){
     {k:'desc',label:'Descrição',v:l.desc},
     {k:'valor',label:'Valor',type:'money',v:fmt(l.valor)},
     {k:'data',label:'Data',type:'date',v:l.data},
-    ...(l.empresa||l.tipo==='transf'||l.tipo==='fatura'||l.tipo==='reemb'?[]:
-      [{k:'catId',label:'Categoria',type:'select',opts:db.cats.filter(c=>!c.arq&&c.tipo===l.tipo),v:l.catId}])
+    ...(l.tipo==='transf'||l.tipo==='fatura'||l.tipo==='reemb'?[]:
+      [{k:'catId',label:'Categoria',type:'select',opts:db.cats.filter(c=>!c.arq&&c.tipo===l.tipo),v:l.catId}]),
+    ...(l.naoMeu>0&&!l.parcs?[{k:'naoMeu',label:`Quanto ${nomePessoa(l.devedorId)} te deve`,type:'money',v:fmt(l.naoMeu)}]:[])
   ],d=>{
     const v=parseMoney(d.valor); if(v<=0)return toast('Valor inválido');
-    if(l.credEmpresa>0&&l.parcs>1){toast('Edite pelo lançamento original da compra parcelada')}
-    /* crédito da empresa acompanha o valor, se ainda não recebeu nada */
-    if(l.credEmpresa>0&&l.credEmpresa===l.credTotal&&!l.parcs){l.credEmpresa=v;l.credTotal=v}
+    if(d.naoMeu!==undefined){
+      const nm=Math.min(v,parseMoney(d.naoMeu));
+      if(l.cred!==l.credTotal&&nm!==l.naoMeu)return toast('Já recebeu parte disso — não dá para mudar o valor devido');
+      l.naoMeu=nm; l.cred=nm; l.credTotal=nm;
+      if(!nm)l.devedorId=null;
+    }
     Object.assign(l,{desc:d.desc||l.desc,valor:v,data:d.data});
     if(d.catId!==undefined)l.catId=d.catId;
     save();fecharMdl();render();
-  });
+  },l.parcs>1?'Editar uma parcela não mexe nas outras nem no valor devido.':'');
 }
 function excluir(id){
   const l=db.lanc.find(x=>x.id===id); if(!l)return;
   const grupo=l.compraId?db.lanc.filter(x=>x.compraId===l.compraId):[l];
-  if(grupo.some(x=>x.credTotal>x.credEmpresa)&&!confirm('Parte disso já foi reembolsada. Excluir mesmo assim?'))return;
+  if(grupo.some(x=>x.credTotal>0&&x.credTotal>x.cred)&&!confirm('Parte disso já foi recebida de volta. Excluir mesmo assim?'))return;
   if(!confirm(grupo.length>1?`Excluir a compra inteira (${grupo.length} parcelas)?`:'Excluir este lançamento?'))return;
   const ids=new Set(grupo.map(x=>x.id));
   db.lanc=db.lanc.filter(x=>!ids.has(x.id));
@@ -890,7 +985,7 @@ function verFatura(cid,ref){
   const it=faturaItens(cid,ref).sort((a,b)=>a.data<b.data?-1:1);
   $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
     <h3>Fatura ${lblMes(ref)} — ${esc(nomeConta(cid))}</h3>
-    ${it.length?it.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}${l.parcs>1?` <span class="tag k">${l.parc}/${l.parcs}</span>`:''}${l.empresa?' <span class="tag e">empresa</span>':''}</div><div class="sub">${dDia(l.data)}</div></div><div class="v">${R(l.valor)}</div></div>`).join('')
+    ${it.length?it.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}${l.parcs>1?` <span class="tag k">${l.parc}/${l.parcs}</span>`:''}${l.devedorId?` <span class="tag e">${esc(nomePessoa(l.devedorId))}</span>`:''}</div><div class="sub">${dDia(l.data)}</div></div><div class="v">${R(l.valor)}</div></div>`).join('')
     :'<div class="empty">Fatura vazia.</div>'}
     <div class="row"><div class="l"><b>Total</b></div><div class="v neg">${R(faturaTotal(cid,ref))}</div></div>
     <button class="b gh" data-act="fechar">Fechar</button></div></div>`;
@@ -920,11 +1015,11 @@ function importar(file){
 }
 
 const VIEWS={inicio:vInicio,lancar:vLancar,extrato:vExtrato,cartoes:vCartoes,
-  empresa:vEmpresa,orcamento:vOrcamento,relatorio:vRelatorio,config:vConfig};
+  receber:vReceber,orcamento:vOrcamento,relatorio:vRelatorio,config:vConfig};
 
 /* ============ eventos ============ */
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes]');
+  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp]');
   if(!t)return;
   const d=t.dataset;
   if(d.tab){fecharMdl();tab=d.tab;render();return}
@@ -932,6 +1027,7 @@ document.addEventListener('click',e=>{
   if(d.fl){filtro=d.fl;render();return}
   if(d.mes){mes=d.mes;tab='extrato';render();return}
   if(d.desistir!==undefined&&d.desistir){desistir(d.desistir);return}
+  if(d.selp){itensReceber(l=>l.devedorId===d.selp).forEach(l=>sel.add(l.id));render();return}
   if(d.lanc){abrirLanc(d.lanc);return}
   if(d.ed!==undefined){const[tp,id]=d.ed.split('|');editar(tp,id);return}
   if(d.pagfat){const[c,r]=d.pagfat.split('|');pagarFatura(c,r);return}
@@ -950,7 +1046,7 @@ document.addEventListener('click',e=>{
     case 'pago':togglePago(arg);break;
     case 'editar-lanc':editarLanc(arg);break;
     case 'excluir':excluir(arg);break;
-    case 'sel-tudo':itensReceber().forEach(l=>sel.add(l.id));render();break;
+    case 'sel-emp':itensReceber(daEmpresa).forEach(l=>sel.add(l.id));render();break;
     case 'sel-nada':sel.clear();render();break;
     case 'copiar':copiarLista();break;
     case 'reembolso':registrarReembolso();break;
@@ -1012,33 +1108,58 @@ if(location.search.includes('teste')){
   ok(faturaVenc(c,'2026-01')==='2026-02-05','vencimento cai no mês seguinte ao fechamento');
   ok(faturaVenc({fechamento:5,vencimento:20},'2026-01')==='2026-01-20','vencimento depois do fechamento fica no mesmo mês');
 
-  // cenário completo: cartão + parcela + empresa + reembolso parcial + desistência
+  // migração v1 -> v2: o que foi lançado como "empresa" vira dívida da pessoa Empresa
   const real=localStorage.getItem(K);
+  db={v:1,contas:[{id:'X',nome:'c',tipo:'banco',saldoInicial:0,arq:false}],cats:[],fixas:[],orc:{},
+      lanc:[{id:'L',tipo:'saida',data:'2026-01-05',desc:'velho',valor:50000,contaId:'X',pago:true,
+             empresa:true,credEmpresa:50000,credTotal:50000}]};
+  migrar();
+  ok(db.v===2&&db.pessoas.length===1&&db.pessoas[0].empresa,'migração cria a pessoa Empresa');
+  ok(db.lanc[0].devedorId===db.pessoas[0].id,'lançamento antigo aponta para ela');
+  ok(db.lanc[0].naoMeu===50000&&meu(db.lanc[0])===0,'gasto antigo de empresa continua fora das estatísticas');
+  ok(db.lanc[0].cred===50000&&db.lanc[0].credEmpresa===undefined,'crédito migrou de campo');
+
+  // cenário completo: cartão + parcela + empresa + rateio + recebimento parcial + desistência
   db=novoDb();
   db.contas.push({id:'B',nome:'Banco',tipo:'banco',saldoInicial:500000,arq:false});
   db.contas.push({id:'C',nome:'Visa',tipo:'cartao',fechamento:28,vencimento:5,pagaId:'B',limite:1000000,arq:false,saldoInicial:0});
   const cm=db.cats.find(c=>c.nome==='Mercado').id;
-  const lanc=(o)=>{novo={tipo:'saida',catId:cm,parcs:1,empresa:false,pago:true,desc:'x',destId:'',...o};salvar();};
+  const EMP=db.pessoas[0].id;
+  db.pessoas.push({id:'P',nome:'João',empresa:false,arq:false});
+  const lanc=(o)=>{novo={tipo:'saida',catId:cm,parcs:1,devem:false,devedorId:'',devolve:'',pago:true,desc:'x',destId:'',...o};salvar();};
   lanc({data:'2026-01-20',desc:'Geladeira',valor:'3000,00',contaId:'C',parcs:3});
-  lanc({data:'2026-01-22',desc:'Material obra',valor:'900,00',contaId:'C',parcs:3,empresa:true});
+  lanc({data:'2026-01-22',desc:'Material obra',valor:'900,00',contaId:'C',parcs:3,devem:true,devedorId:EMP});
   lanc({data:'2026-01-10',desc:'Mercado',valor:'200,00',contaId:'B'});
   ok(saldo('B')===480000,'compra no cartão não mexe no saldo da conta');
   ok(faturaTotal('C','2026-01')===130000&&faturaTotal('C','2026-03')===130000,'parcelas caem uma em cada fatura');
   ok(faturaTotal('C','2026-04')===0,'não vaza parcela extra');
   ok(aReceber()===90000&&itensReceber().length===1,'crédito da empresa vem cheio no mês da compra, num item só');
-  ok(soma(gastosMes('2026-01'))===120000,'estatística ignora gasto de empresa');
+  ok(somaMeu(gastosMes('2026-01'))===120000,'estatística ignora gasto de empresa');
+
+  // rateio: paguei 120, João deve 80, 40 são meus
+  lanc({data:'2026-01-15',desc:'Lanche',valor:'120,00',contaId:'B',devem:true,devedorId:'P',devolve:'80,00'});
+  const rat=db.lanc.find(l=>l.desc==='Lanche');
+  ok(rat.valor===12000&&rat.naoMeu===8000&&meu(rat)===4000,'rateio separa a sua fatia');
+  ok(saldo('B')===480000-12000,'no rateio sai do bolso o valor CHEIO');
+  ok(somaMeu(gastosMes('2026-01'))===120000+4000,'só a sua fatia entra no orçamento');
+  ok(aReceber()===90000+8000,'a parte do João vira dívida');
+  ok(aReceber(daEmpresa)===90000,'dá para somar só o da empresa');
+  ok(devedores().length===2&&devedores()[0].empresa,'empresa aparece primeiro na lista de devedores');
+
   db.lanc.push({id:uid(),tipo:'fatura',data:'2026-02-05',desc:'f',valor:faturaAberto('C','2026-01'),contaId:'B',destId:'C',faturaRef:'2026-01',pago:true});
-  ok(faturaAberto('C','2026-01')===0&&saldo('B')===350000,'pagar fatura quita e sai da conta');
-  ok(soma(gastosMes('2026-02'))===100000,'pagar fatura não vira gasto novo');
-  const it=itensReceber()[0];
+  ok(faturaAberto('C','2026-01')===0,'pagar fatura quita');
+  ok(somaMeu(gastosMes('2026-02'))===100000,'pagar fatura não vira gasto novo');
+  const it=itensReceber(daEmpresa)[0];
+  const saldoAntes=saldo('B');
   db.lanc.push({id:uid(),tipo:'reemb',data:'2026-02-10',desc:'r',valor:70000,contaId:'B',pago:true,itens:[it.id]});
-  it.credEmpresa-=70000;
-  ok(aReceber()===20000&&saldo('B')===420000,'reembolso parcial: sobra pendente e entra no saldo');
-  ok(soma(receitasMes('2026-02'))===0,'reembolso não conta como receita');
-  db.lanc.push({id:uid(),tipo:'saida',data:'2026-02-20',desc:'r',valor:it.credEmpresa,catId:cm,contaId:'C',pago:true,ajuste:true});
-  it.credEmpresa=0;
-  ok(soma(gastosMes('2026-02'))===120000,'desistir vira gasto meu');
-  ok(saldo('B')===420000,'ajuste não mexe no saldo');
+  it.cred-=70000;
+  ok(aReceber(daEmpresa)===20000&&saldo('B')===saldoAntes+70000,'recebimento parcial: sobra pendente e entra no saldo');
+  ok(soma(receitasMes('2026-02'))===0,'recebimento não conta como receita');
+  const saldoAntesAjuste=saldo('B');
+  db.lanc.push({id:uid(),tipo:'saida',data:'2026-02-20',desc:'r',valor:it.cred,catId:cm,contaId:'C',pago:true,ajuste:true});
+  it.cred=0;
+  ok(somaMeu(gastosMes('2026-02'))===120000,'desistir vira gasto meu');
+  ok(saldo('B')===saldoAntesAjuste,'ajuste não mexe no saldo');
   ok(faturaTotal('C','2026-02')===130000,'ajuste não entra na fatura');
   // fumaça de UI: nenhuma tela pode estourar erro ao desenhar
   for(const t of Object.keys(VIEWS)){try{tab=t;render()}catch(e){throw new Error('FALHOU ao desenhar '+t+': '+e.message)}}
@@ -1067,6 +1188,28 @@ if(location.search.includes('teste')){
   clk('[data-act="menu"]'); clk('.mdl .grab');
   ok(!!document.querySelector('.mdl'),'clique dentro da caixa não fecha');
   clk('.mask'); ok(!document.querySelector('.mdl'),'clique no fundo escuro fecha');
+
+  /* rateio pela tela, que é o caminho que o usuário percorre de verdade */
+  tab='config'; render();
+  clk(achaEd('pessoa|')); campo('#mf_nome','Irmão'); clk('[data-act="mdl-ok"]');
+  const irmao=db.pessoas.find(p=>p.nome==='Irmão');
+  ok(!!irmao&&!irmao.empresa,'cadastra pessoa sem marcá-la como empresa');
+  tab='lancar'; novo={...novoVazio(),contaId:'B'}; render();
+  novo.valor='120,00'; novo.desc='Lanche';
+  const cx=document.querySelector('[data-f="devem"]');
+  cx.checked=true; cx.dispatchEvent(new Event('change',{bubbles:true}));
+  ok(!!document.querySelector('[data-f="devedorId"]')&&!!document.querySelector('[data-f="devolve"]'),
+     'marcar “alguém vai me devolver” revela de quem e quanto');
+  novo.devedorId=irmao.id; novo.devolve='80,00';
+  const saldoAntesRateio=saldo('B');
+  clk('[data-act="salvar"]');
+  const lanche=db.lanc.find(l=>l.desc==='Lanche');
+  ok(lanche.valor===12000&&lanche.naoMeu===8000&&meu(lanche)===4000,'rateio: 120 saiu, 80 é dele, 40 é meu');
+  ok(saldo('B')===saldoAntesRateio-12000,'rateio tira o valor cheio da conta');
+  tab='receber'; render();
+  clk('[data-selp="'+irmao.id+'"]');
+  ok(sel.size===1,'“Marcar” seleciona os itens daquela pessoa');
+  sel.clear();
 
   if(real)localStorage.setItem(K,real); else localStorage.removeItem(K);
   load(); tab='inicio'; mes=mesDe(hoje()); novo.parcs=1; render();
