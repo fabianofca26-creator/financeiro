@@ -49,16 +49,18 @@ header.curto{padding-bottom:40px}
 .eng.on svg{opacity:1}
 
 /* barra de navegação fixa embaixo — no desktop vira uma ilha flutuante */
-#bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;gap:2px;
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;gap:1px;
  background:var(--card);border-top:1px solid var(--bd);
- padding:7px 10px calc(9px + env(safe-area-inset-bottom))}
+ padding:7px 6px calc(9px + env(safe-area-inset-bottom))}
 @media(min-width:640px){#bar{max-width:440px;margin:0 auto;bottom:18px;border:1px solid var(--bd);border-radius:20px;box-shadow:0 10px 34px rgba(16,24,40,.16)}}
-#bar button{flex:1;max-width:92px;background:none;border:0;color:var(--mut);cursor:pointer;border-radius:12px;
- display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;font:650 10px/1 inherit;letter-spacing:.1px;position:relative}
+/* min-width:0 senão o rótulo mais longo dita a largura e os ícones desalinham */
+#bar button{flex:1 1 0;min-width:0;max-width:92px;background:none;border:0;color:var(--mut);cursor:pointer;border-radius:12px;
+ display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;font:650 9px/1 inherit;letter-spacing:-.1px;position:relative}
+#bar button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #bar button.on{color:var(--ac)}
 #bar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 /* sem rótulo embaixo, precisa centralizar sozinho — os outros botões são preenchidos pelo texto */
-#bar .add{background:var(--ac);color:#fff;max-width:60px;border-radius:16px;margin:-2px 4px 0;
+#bar .add{background:var(--ac);color:#fff;max-width:48px;border-radius:15px;margin:-2px 3px 0;
  justify-content:center;padding:6px;box-shadow:0 4px 12px rgba(47,107,255,.35)}
 #bar .add svg{stroke-width:2.4}
 #bar .add:active{transform:scale(.94)}
@@ -397,20 +399,26 @@ let tab='inicio', mes=mesDe(hoje());
    não está na conta". Análise junta orçamento e relatório: as duas respondem
    "como foi o mês". Assim cabem todos os destinos na barra, sem menu escondido. */
 const TITULO={inicio:'Início',lancar:'Lançar',extrato:'Extrato',cartoes:'Cartões',
-  carteira:'Carteira',analise:'Análise',config:'Ajustes'};
+  carteira:'Carteira',orcamento:'Orçamento',relatorio:'Relatório',config:'Ajustes'};
 /* telas que dependem do mês mostram o seletor no cabeçalho; as outras, não */
-const POR_MES=['inicio','extrato','cartoes','analise'];
+const POR_MES=['inicio','extrato','cartoes','orcamento','relatorio'];
 const ICO={
   inicio:'<path d="M4 11 12 4l8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/>',
   extrato:'<path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 9h6M9 13h4"/>',
   lancar:'<path d="M12 5v14M5 12h14"/>',
   cartoes:'<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>',
   carteira:'<ellipse cx="12" cy="6.4" rx="7" ry="2.6"/><path d="M5 6.4v5c0 1.44 3.13 2.6 7 2.6s7-1.16 7-2.6v-5"/><path d="M5 11.4v5c0 1.44 3.13 2.6 7 2.6s7-1.16 7-2.6v-5"/>',
-  analise:'<path d="M5 19V11M12 19V5M19 19v-6"/>',
+  orcamento:'<path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 2.6A8.5 8.5 0 0 1 21.4 9H15z"/>',
+  relatorio:'<path d="M5 19V11M12 19V5M19 19v-6"/>',
   config:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.6 4.4a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.8 1z"/>',
 };
 const svg=k=>`<svg viewBox="0 0 24 24">${ICO[k]}</svg>`;
-const BARRA=['inicio','extrato','lancar','cartoes','carteira','analise'];
+/* com 7 botões numa tela de 375px, "Orçamento" não cabe sem reticências.
+   A tela continua se chamando Orçamento; só o rótulo da barra é curto. */
+const CURTO={orcamento:'Metas',relatorio:'Gráficos'};
+const rotulo=k=>CURTO[k]||TITULO[k];
+/* relatório e orçamento na ponta esquerda; o dia a dia perto do polegar */
+const BARRA=['relatorio','orcamento','inicio','lancar','extrato','cartoes','carteira'];
 
 function toast(t){
   document.querySelectorAll('.toast').forEach(e=>e.remove());
@@ -428,7 +436,7 @@ function render(){
   const ar=aReceber();
   $('#bar').innerHTML=BARRA.map(k=>{
     if(k==='lancar')return `<button class="add" data-tab="lancar" aria-label="Lançar">${svg('lancar')}</button>`;
-    return `<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}<span>${TITULO[k]}</span>${k==='carteira'&&ar>0?'<i class="dot"></i>':''}</button>`;
+    return `<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}<span>${rotulo(k)}</span>${k==='carteira'&&ar>0?'<i class="dot"></i>':''}</button>`;
   }).join('');
   $('#view').innerHTML=VIEWS[tab]();
   window.scrollTo(0,0);
@@ -996,8 +1004,6 @@ function gAnual(){
 function vRelatorio(){
   return `<div class="viz">${gRosca()}${gSaldo()}${gComprometido()}${gAnual()}</div>`;
 }
-/* "como foi o mês": o teto por categoria e os gráficos respondem a mesma coisa */
-function vAnalise(){ return vOrcamento()+vRelatorio(); }
 
 /* "dinheiro meu que não está na conta": aplicado + o que me devem */
 function cardPatrimonio(){
@@ -1355,7 +1361,7 @@ function importar(file){
 }
 
 const VIEWS={inicio:vInicio,lancar:vLancar,extrato:vExtrato,cartoes:vCartoes,
-  carteira:vCarteira,analise:vAnalise,config:vConfig};
+  carteira:vCarteira,orcamento:vOrcamento,relatorio:vRelatorio,config:vConfig};
 
 /* ============ eventos ============ */
 document.addEventListener('click',e=>{
@@ -1540,10 +1546,14 @@ if(location.search.includes('teste')){
 
   /* nenhum destino pode ficar escondido atrás de menu */
   tab='inicio'; render();
-  ok(document.querySelectorAll('#bar button').length===6,'os 6 destinos cabem na barra');
+  ok(document.querySelectorAll('#bar button').length===7,'os 7 destinos cabem na barra');
   ok(Object.keys(VIEWS).every(k=>k==='lancar'||k==='config'||BARRA.includes(k)),
      'toda tela está na barra, exceto Lançar (é o +) e Ajustes (é a engrenagem)');
-  clk('#bar [data-tab="analise"]'); ok(tab==='analise','barra navega direto');
+  ok([...document.querySelectorAll('#bar span')].every(s=>s.scrollWidth<=s.clientWidth+0.5),
+     'nenhum rótulo da barra sai cortado com reticências');
+  ok(TITULO.relatorio==='Relatório'&&TITULO.orcamento==='Orçamento',
+     'o rótulo curto é só da barra: o título da tela continua por extenso');
+  clk('#bar [data-tab="relatorio"]'); ok(tab==='relatorio','barra navega direto');
   clk('.eng'); ok(tab==='config','engrenagem do cabeçalho abre os ajustes');
   clk('#bar [data-tab="carteira"]'); ok(tab==='carteira','barra leva para a carteira');
   /* o fundo escuro do modal continua fechando, e o miolo não */
@@ -1583,7 +1593,7 @@ if(location.search.includes('teste')){
   db.fixas.push({id:'FX',desc:'Net',tipo:'saida',valor:12000,dia:10,contaId:'B',catId:cm,ativa:true,ultimoMes:mesDe(hoje())});
   ok(comprometido(addMes(mesDe(hoje()),1)).fixas===12000,'mês futuro usa a regra da conta fixa');
   ok(comprometido(mesDe(hoje())).fixas===0,'mês atual não conta a fixa que já virou lançamento');
-  mes='2026-01'; tab='analise'; render();
+  mes='2026-01'; tab='relatorio'; render();
   ok(document.querySelectorAll('.viz .c').length===4,'relatório tem os quatro gráficos');
   ok(document.querySelectorAll('.viz [data-info]').length>20,'as marcas respondem ao toque');
   ok([...document.querySelectorAll('.viz .lida')].every(l=>l.textContent.trim()),

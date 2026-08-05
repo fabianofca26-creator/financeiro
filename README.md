@@ -22,9 +22,11 @@ Depois vá em **Mais › Ajustes** e cadastre suas contas com o saldo de hoje, e
 
 Uma barra fixa embaixo com **todos** os destinos — nada escondido atrás de menu:
 
-**Início** · **Extrato** · **+** (lançar) · **Cartões** · **Carteira** · **Análise**, mais a engrenagem dos ajustes no cabeçalho.
+**Gráficos** · **Metas** · **Início** · **+** (lançar) · **Extrato** · **Cartões** · **Carteira**, mais a engrenagem dos ajustes no cabeçalho.
 
-**Carteira** responde "dinheiro meu que não está na conta": patrimônio no topo, depois os investimentos e quem te deve. **Análise** responde "como foi o mês": o orçamento por categoria e os quatro gráficos.
+Na barra os dois primeiros usam rótulo curto para caber em tela de celular; as telas se chamam **Relatório** e **Orçamento**.
+
+**Carteira** responde "dinheiro meu que não está na conta": patrimônio no topo, depois os investimentos e quem te deve.
 
 ## Como ele pensa
 
