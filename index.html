@@ -254,8 +254,14 @@ const save=()=>localStorage.setItem(K,JSON.stringify(db));
 const conta=id=>db.contas.find(c=>c.id===id);
 const cat=id=>db.cats.find(c=>c.id===id);
 const isCartao=id=>{const c=conta(id);return !!c&&c.tipo==='cartao'};
-const contasAtivas=(inclCartao=true)=>db.contas.filter(c=>!c.arq&&(inclCartao||c.tipo!=='cartao'));
+const isInvest=id=>{const c=conta(id);return !!c&&c.tipo==='invest'};
+/* conta de gasto = de onde sai dinheiro do dia a dia. Cartão tem fatura, e
+   aplicação é dinheiro guardado — nenhum dos dois entra no saldo disponível. */
+const ehGasto=c=>c.tipo!=='cartao'&&c.tipo!=='invest';
+const contasAtivas=(inclCartao=true,inclInvest=false)=>db.contas.filter(c=>!c.arq&&
+  (c.tipo==='cartao'?inclCartao:(c.tipo==='invest'?inclInvest:true)));
 const cartoes=()=>db.contas.filter(c=>c.tipo==='cartao'&&!c.arq);
+const aplicacoes=()=>db.contas.filter(c=>c.tipo==='invest'&&!c.arq);
 const nomeConta=id=>{const c=conta(id);return c?c.nome:'?'};
 const pessoa=id=>db.pessoas.find(p=>p.id===id);
 const pessoasAtivas=()=>db.pessoas.filter(p=>!p.arq);
@@ -302,10 +308,24 @@ function saldo(cid){
     else if(l.tipo==='transf'){if(l.contaId===cid)s-=l.valor;if(l.destId===cid)s+=l.valor;}
     else if(l.tipo==='fatura'&&l.contaId===cid)s-=l.valor;
     else if(l.tipo==='reemb'&&l.contaId===cid)s+=l.valor;
+    else if(l.tipo==='rend'&&l.contaId===cid)s+=l.valor;   /* pode ser negativo */
   }
   return s;
 }
-const saldoTotal=()=>db.contas.filter(c=>c.tipo!=='cartao'&&!c.arq).reduce((s,c)=>s+saldo(c.id),0);
+/* saldo disponível: só o que dá para gastar hoje. Aplicação fica de fora. */
+const saldoTotal=()=>db.contas.filter(c=>ehGasto(c)&&!c.arq).reduce((s,c)=>s+saldo(c.id),0);
+
+/* ---- investimentos ---- */
+const rendimento=id=>db.lanc.filter(l=>l.tipo==='rend'&&l.contaId===id).reduce((s,l)=>s+l.valor,0);
+const aportado=id=>saldo(id)-rendimento(id);
+const totalInvestido=()=>aplicacoes().reduce((s,c)=>s+saldo(c.id),0);
+const totalRendimento=()=>aplicacoes().reduce((s,c)=>s+rendimento(c.id),0);
+const patrimonio=()=>saldoTotal()+totalInvestido();
+/* data da última vez que você disse quanto a aplicação vale */
+function atualizadoEm(id){
+  const rs=db.lanc.filter(l=>l.tipo==='rend'&&l.contaId===id).map(l=>l.data).sort();
+  return rs.length?rs[rs.length-1]:null;
+}
 
 /* previsto: saldo de hoje + o que ainda entra/sai até o fim do mês, incluindo faturas a vencer */
 function previsto(ym){
@@ -370,7 +390,7 @@ function gerarFixas(){
 /* ============ UI ============ */
 let tab='inicio', mes=mesDe(hoje());
 const TITULO={inicio:'Início',lancar:'Lançar',extrato:'Extrato',cartoes:'Cartões',
-  receber:'Me devem',orcamento:'Orçamento',relatorio:'Relatório',config:'Ajustes'};
+  receber:'Me devem',invest:'Investimentos',orcamento:'Orçamento',relatorio:'Relatório',config:'Ajustes'};
 /* telas que dependem do mês mostram o seletor no cabeçalho; as outras, não */
 const POR_MES=['inicio','extrato','cartoes','orcamento','relatorio'];
 const ICO={
@@ -379,6 +399,7 @@ const ICO={
   lancar:'<path d="M12 5v14M5 12h14"/>',
   cartoes:'<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>',
   receber:'<path d="M4 20V9l8-5 8 5v11"/><path d="M9.5 20v-5h5v5"/>',
+  invest:'<path d="M4 18 9.5 11l3.5 3.5L20 6"/><path d="M15 6h5v5"/>',
   orcamento:'<path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 2.6A8.5 8.5 0 0 1 21.4 9H15z"/>',
   relatorio:'<path d="M5 19V11M12 19V5M19 19v-6"/>',
   config:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.6 4.4a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.8 1z"/>',
@@ -386,7 +407,7 @@ const ICO={
 };
 const svg=k=>`<svg viewBox="0 0 24 24">${ICO[k]}</svg>`;
 const BARRA=['inicio','extrato','lancar','cartoes','mais'];
-const NO_MENU=['receber','orcamento','relatorio','config'];
+const NO_MENU=['receber','invest','orcamento','relatorio','config'];
 
 function toast(t){
   document.querySelectorAll('.toast').forEach(e=>e.remove());
@@ -428,7 +449,7 @@ function hero(){
 
 /* ---- Início ---- */
 function vInicio(){
-  const ar=aReceber();
+  const ar=aReceber(), inv=totalInvestido(), rnd=totalRendimento();
   const g=somaMeu(gastosMes(mes)), r=soma(receitasMes(mes));
   const h=hoje(), lim=new Date(Date.now()+7*864e5).toISOString().slice(0,10);
   const venc=db.lanc.filter(l=>!l.pago&&!l.ajuste&&!isCartao(l.contaId)&&l.data<=lim&&(l.tipo==='saida'||l.tipo==='entrada'))
@@ -453,6 +474,10 @@ function vInicio(){
   ${ar>0?`<div class="strip" data-tab="receber">
     <div><div class="t empc">Me devem</div><div class="sub">${devedores().map(d=>d.nome).join(', ')} — toque para ver</div></div>
     <div class="v empc" style="font-size:18px">${R(ar)}</div></div>`:''}
+  ${inv>0?`<div class="strip" style="border-left-color:var(--ac)" data-tab="invest">
+    <div><div class="t" style="color:var(--ac)">Investido</div>
+    <div class="sub">${rnd>=0?'rendeu':'perdeu'} ${R(Math.abs(rnd))} — toque para ver</div></div>
+    <div class="v" style="font-size:18px;color:var(--ac)">${R(inv)}</div></div>`:''}
   ${bkp}
   <div class="c"><h2>Vence nos próximos 7 dias</h2>
   ${(venc.length||fat.length)?
@@ -475,6 +500,11 @@ function linhaLanc(l){
   if(l.parcs>1)tags+=` <span class="tag k">${l.parc}/${l.parcs}</span>`;
   if(!l.pago&&!l.ajuste&&(l.tipo==='saida'||l.tipo==='entrada'))tags+=' <span class="tag p">pendente</span>';
   if(l.ajuste)tags+=' <span class="tag k">ajuste</span>';
+  if(l.tipo==='rend'){
+    return `<div class="row"><div class="l"><div class="t">${esc(l.desc)} <span class="tag k">rendimento</span></div>
+      <div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))} · não conta como receita</div></div>
+      <div class="v ${l.valor<0?'neg':'pos'}">${l.valor<0?'−':'+'}${R(Math.abs(l.valor))}</div></div>`;
+  }
   const cls=l.tipo==='transf'?'mutc':(l.tipo==='reemb'?'empc':(neg?'neg':'pos'));
   return `<div class="row clk" data-lanc="${l.id}"><div class="l"><div class="t">${esc(l.desc)}${tags}</div><div class="sub">${dDia(l.data)} · ${dir}</div></div><div class="v ${cls}">${neg?'−':(l.tipo==='transf'?'':'+')}${R(l.valor)}</div></div>`;
 }
@@ -492,7 +522,7 @@ function vLancar(){
   const opts=(arr,sel,key='nome')=>arr.map(o=>`<option value="${o.id}" ${o.id===sel?'selected':''}>${esc(o[key])}</option>`).join('');
 
   if(novo.tipo==='transf'){
-    const nc=contasAtivas(false);
+    const nc=contasAtivas(false,true);   /* aportar e resgatar são transferências */
     if(!novo.destId&&nc[1])novo.destId=nc[1].id;
     return `<div class="c">${segTipo()}
       <div class="g2">
@@ -767,16 +797,21 @@ function vOrcamento(){
    verdade); depois de hoje entra o previsto, incluindo fatura que vence no meio. */
 function saldoDia(d){
   const h=hoje(), futuro=d>h;
-  let s=db.contas.filter(c=>c.tipo!=='cartao'&&!c.arq).reduce((a,c)=>a+(c.saldoInicial||0),0);
+  let s=db.contas.filter(c=>ehGasto(c)&&!c.arq).reduce((a,c)=>a+(c.saldoInicial||0),0);
   for(const l of db.lanc){
     if(l.ajuste||l.data>d)continue;
-    if(isCartao(l.contaId))continue;      /* compra no cartão não move caixa */
+    if(isCartao(l.contaId)||isInvest(l.contaId))continue;  /* nem cartão nem aplicação movem caixa */
     if(!l.pago&&!futuro)continue;
     if(l.tipo==='saida')s-=l.valor;
     else if(l.tipo==='entrada')s+=l.valor;
     else if(l.tipo==='fatura')s-=l.valor;
     else if(l.tipo==='reemb')s+=l.valor;
-    /* transferência entre contas suas não muda o total */
+    else if(l.tipo==='transf'&&isInvest(l.destId))s-=l.valor;  /* aporte sai do disponível */
+  }
+  /* resgate: a transferência sai da aplicação, então o laço acima a descartou */
+  for(const l of db.lanc){
+    if(l.tipo!=='transf'||l.data>d)continue;
+    if(isInvest(l.contaId)&&!isInvest(l.destId))s+=l.valor;
   }
   if(futuro)for(const c of cartoes())for(const ref of refsCartao(c.id)){
     const ab=faturaAberto(c.id,ref), v=faturaVenc(c,ref);
@@ -824,8 +859,30 @@ const kR=c=>{const v=c/100;return Math.abs(v)>=1000?(v/1000).toFixed(v%1000?1:0)
 const bloco=(titulo,lida,corpo,dica)=>`<div class="c"><h2>${titulo}</h2>
   <div class="lida">${lida}</div>${corpo}${dica?`<div class="hint">${dica}</div>`:''}</div>`;
 
-/* 1. rosca: parte-do-todo de relance. No máximo 6 fatias — passando disso as
-   cores adjacentes borram. O valor fica na legenda, não na fatia. */
+/* rosca com legenda-tabela. No máximo 6 fatias — passando disso as cores
+   adjacentes borram. O valor mora na legenda, nunca em cima da fatia:
+   três tons da paleta ficam abaixo de 3:1 no fundo claro. */
+function rosca(fat,tot,sufixo,titulo){
+  const r=54, C=2*Math.PI*r;
+  let acc=0;
+  const arcos=fat.map((f,i)=>{
+    const fr=f.v/tot, len=Math.max(1,C*fr-2);   /* 2px de folga entre fatias */
+    const s=`<circle cx="70" cy="70" r="${r}" fill="none" stroke="${CORES[i]}" stroke-width="17"
+      stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-C*acc).toFixed(2)}"
+      transform="rotate(-90 70 70)" ${inf(`${f.nome}: ${R(f.v)} — ${Math.round(fr*100)}% ${sufixo}`)}/>`;
+    acc+=fr; return s;
+  }).join('');
+  const legenda=fat.map((f,i)=>`<div ${inf(`${f.nome}: ${R(f.v)} — ${Math.round(f.v/tot*100)}% ${sufixo}`)}>
+    <i style="background:${CORES[i]}"></i><span class="nm">${esc(f.nome)}</span>
+    <span class="vl">${R(f.v)}<span class="mutc" style="font-weight:400"> ${Math.round(f.v/tot*100)}%</span></span></div>`).join('');
+  return `<svg viewBox="0 0 140 140" style="max-width:190px;margin:2px auto 0" role="img"
+      aria-label="${esc(titulo)}">${arcos}
+     <text x="70" y="67" text-anchor="middle" style="font-size:9px;fill:var(--mut)">TOTAL</text>
+     <text x="70" y="82" text-anchor="middle" style="font-size:15px;font-weight:700">${R(tot)}</text></svg>
+    <div class="leg legt">${legenda}</div>`;
+}
+
+/* 1. gastos do mês por categoria */
 function gRosca(){
   const todos=porCategoria(mes), tot=todos.reduce((s,[,v])=>s+v,0);
   if(!tot)return bloco(`Para onde foi — ${lblMes(mes)}`,'',
@@ -833,24 +890,8 @@ function gRosca(){
   const top=todos.slice(0,5).map(([id,v])=>({nome:cat(id)?cat(id).nome:'Sem categoria',v}));
   const resto=todos.slice(5).reduce((s,[,v])=>s+v,0);
   const fat=resto>0?[...top,{nome:'Outros',v:resto}]:top;
-  const r=54, C=2*Math.PI*r;
-  let acc=0;
-  const arcos=fat.map((f,i)=>{
-    const fr=f.v/tot, len=Math.max(1,C*fr-2);   /* 2px de folga entre fatias */
-    const s=`<circle cx="70" cy="70" r="${r}" fill="none" stroke="${CORES[i]}" stroke-width="17"
-      stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-C*acc).toFixed(2)}"
-      transform="rotate(-90 70 70)" ${inf(`${f.nome}: ${R(f.v)} — ${Math.round(fr*100)}% do mês`)}/>`;
-    acc+=fr; return s;
-  }).join('');
-  const legenda=fat.map((f,i)=>`<div ${inf(`${f.nome}: ${R(f.v)} — ${Math.round(f.v/tot*100)}% do mês`)}>
-    <i style="background:${CORES[i]}"></i><span class="nm">${esc(f.nome)}</span>
-    <span class="vl">${R(f.v)}<span class="mutc" style="font-weight:400"> ${Math.round(f.v/tot*100)}%</span></span></div>`).join('');
   return bloco(`Para onde foi — ${lblMes(mes)}`,`Total de gastos seus: <b>${R(tot)}</b>`,
-    `<svg viewBox="0 0 140 140" style="max-width:190px;margin:2px auto 0" role="img"
-       aria-label="Gastos por categoria em ${lblMes(mes)}">${arcos}
-      <text x="70" y="67" text-anchor="middle" style="font-size:9px;fill:var(--mut)">TOTAL</text>
-      <text x="70" y="82" text-anchor="middle" style="font-size:15px;font-weight:700">${R(tot)}</text></svg>
-     <div class="leg legt">${legenda}</div>`,
+    rosca(fat,tot,'do mês','Gastos por categoria em '+lblMes(mes)),
     resto>0?(todos.length-5===1?'A categoria menor está somada em “Outros”.'
             :`As ${todos.length-5} categorias menores estão somadas em “Outros”.`):'');
 }
@@ -960,9 +1001,76 @@ function vRelatorio(){
   return `<div class="viz">${gRosca()}${gSaldo()}${gComprometido()}${gAnual()}</div>`;
 }
 
+/* ---- Investimentos ---- */
+const TIPOS_INV=['Poupança','CDB','Tesouro Direto','Fundo','LCI/LCA','Ações/FII','Cripto','Outro'];
+function vInvest(){
+  const apl=aplicacoes();
+  if(!apl.length)return `<div class="c"><div class="empty">Nenhuma aplicação cadastrada.<br>
+    <span style="font-size:12px">Cadastre em Ajustes › Aplicações. Depois é só transferir dinheiro para ela.</span></div>
+    <button class="b gh" data-ed="invest|">+ Nova aplicação</button></div>`;
+
+  const tot=totalInvestido(), rend=totalRendimento(), apo=tot-rend, h=hoje();
+  const pct=apo>0?(rend/apo*100):0;
+  const linhas=apl.map(c=>{
+    const v=saldo(c.id), r=rendimento(c.id), a=v-r;
+    const p=a>0?(r/a*100):0;
+    const at=atualizadoEm(c.id), dias=at?diasEntre(at,h):null;
+    const velho=dias===null||dias>90;
+    return `<div class="row"><div class="l"><div class="t">${esc(c.nome)} <span class="tag k">${esc(c.subtipo||'Outro')}</span></div>
+      <div class="sub">${r>=0?'rendeu':'perdeu'} <span class="${r>=0?'pos':'neg'}">${R(Math.abs(r))}</span>${a>0?` · ${p>=0?'+':''}${p.toFixed(1)}%`:''}
+        · ${at?`atualizado ${dDia(at)}`:'nunca atualizado'}${velho?' <span class="wnc">⚠</span>':''}</div>
+      <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="s p" data-atual="${c.id}">Atualizar valor</button>
+        <button class="s" data-ed="invest|${c.id}">Editar</button></div></div>
+      <div class="v">${R(v)}</div></div>`;
+  }).join('');
+
+  const fat=apl.map(c=>({nome:c.nome,v:saldo(c.id)})).filter(f=>f.v>0).sort((a,b)=>b.v-a.v);
+  const comp=fat.length>1?`<div class="c viz"><h2>Composição da carteira</h2>
+    <div class="lida">Aplicado em <b>${fat.length}</b> ${fat.length>1?'lugares':'lugar'}</div>
+    ${rosca(fat.slice(0,6),fat.slice(0,6).reduce((s,f)=>s+f.v,0),'da carteira','Composição da carteira')}</div>`:'';
+
+  const velhas=apl.filter(c=>{const a=atualizadoEm(c.id);return !a||diasEntre(a,h)>90});
+  return `<div class="c">
+    <div class="big">
+      <div><small>Total investido</small><strong>${R(tot)}</strong></div>
+      <div><small>Rendimento</small><strong class="${rend<0?'neg':'pos'}">${rend>=0?'+':'−'}${R(Math.abs(rend))}</strong>
+        <div class="sub">${apo>0?`${pct>=0?'+':''}${pct.toFixed(1)}% sobre ${R(apo)} aportados`:'sem aportes registrados'}</div></div>
+    </div></div>
+
+  <div class="c">
+    <div class="big"><div><small>Patrimônio</small><strong>${R(patrimonio())}</strong>
+      <div class="sub">${R(saldoTotal())} em conta + ${R(tot)} aplicado</div></div></div>
+    <div class="hint">O saldo da tela inicial continua mostrando só o que dá para gastar hoje — aplicação não entra lá.</div></div>
+
+  ${velhas.length?`<div class="warn">⚠️ ${velhas.length===1?'Uma aplicação está':`${velhas.length} aplicações estão`} sem atualizar há mais de 3 meses. O valor mostrado é o da última vez que você digitou.</div>`:''}
+
+  <div class="c"><h2>Aplicações</h2>${linhas}
+    <button class="b gh" data-ed="invest|">+ Nova aplicação</button>
+    <div class="hint">Aportar e resgatar é transferência: vá em Lançar › Transferência e escolha a aplicação.</div></div>
+  ${comp}`;
+}
+
+/* informar quanto vale hoje; a diferença vira rendimento */
+function atualizarValor(id){
+  const c=conta(id), atual=saldo(id);
+  formModal(`Quanto ${c.nome} vale hoje?`,[
+    {k:'valor',label:'Valor atual',type:'money',v:fmt(atual)},
+    {k:'data',label:'Data',type:'date',v:hoje()}
+  ],d=>{
+    const v=parseMoney(d.valor);
+    if(v<0)return toast('Valor não pode ser negativo');
+    const dif=v-atual;
+    if(!dif){fecharMdl();return toast('Valor não mudou')}
+    db.lanc.push({id:uid(),tipo:'rend',data:d.data,valor:dif,contaId:id,pago:true,
+      desc:(dif>0?'Rendimento ':'Perda ')+c.nome});
+    save();fecharMdl();toast(dif>0?`Rendeu ${R(dif)}`:`Perdeu ${R(-dif)}`);render();
+  },`Hoje está registrado <b>${R(atual)}</b>. A diferença entra como ${'rendimento'}, sem virar receita do mês.`);
+}
+
 /* ---- Config ---- */
 function vConfig(){
-  const cont=db.contas.filter(c=>c.tipo!=='cartao');
+  const cont=db.contas.filter(ehGasto);
   const cds=db.contas.filter(c=>c.tipo==='cartao');
   const dias=db.backup?diasEntre(new Date(db.backup).toISOString().slice(0,10),hoje()):null;
   return `
@@ -984,6 +1092,13 @@ function vConfig(){
     <button class="s" data-ed="fixa|${f.id}">Editar</button></div>`).join(''):'<div class="empty">Nenhuma conta fixa.</div>'}
   <button class="b gh" data-ed="fixa|">+ Nova fixa</button>
   <div class="hint">Nascem sozinhas como pendentes quando o mês vira. Se marcar “valor estimado”, ao pagar com valor diferente o app aprende o novo valor.</div></div>
+
+  <div class="c"><h2>Aplicações</h2>
+  ${db.contas.filter(c=>c.tipo==='invest').map(c=>`<div class="row"><div class="l"><div class="t">${esc(c.nome)}${c.arq?' <span class="tag k">arquivada</span>':''}</div>
+    <div class="sub">${esc(c.subtipo||'Outro')} · ${R(saldo(c.id))}</div></div>
+    <button class="s" data-ed="invest|${c.id}">Editar</button></div>`).join('')
+    ||'<div class="empty">Nenhuma aplicação.</div>'}
+  <button class="b gh" data-ed="invest|">+ Nova aplicação</button></div>
 
   <div class="c"><h2>Pessoas que me devem</h2>
   ${db.pessoas.map(p=>`<div class="row"><div class="l"><div class="t">${esc(p.nome)}${p.empresa?' <span class="tag e">empresa</span>':''}${p.arq?' <span class="tag k">arquivada</span>':''}</div>
@@ -1064,6 +1179,21 @@ function editar(tipo,id){
       if(c)Object.assign(c,o); else db.contas.push({id:uid(),...o});
       save();fecharMdl();render();
     });
+  }
+  if(tipo==='invest'){
+    const c=id?conta(id):null;
+    formModal(c?'Editar aplicação':'Nova aplicação',[
+      {k:'nome',label:'Nome',v:c?.nome,ph:'Ex: CDB Banco Inter'},
+      {k:'subtipo',label:'Tipo',type:'select',opts:TIPOS_INV.map(t=>({id:t,nome:t})),v:c?.subtipo||'CDB'},
+      ...(c?[]:[{k:'saldoInicial',label:'Quanto já tem aplicado hoje',type:'money',v:'0,00'}]),
+      ...(c?[{k:'arq',label:'Arquivada',type:'check',v:c.arq}]:[])
+    ],d=>{
+      if(!d.nome.trim())return toast('Dê um nome');
+      if(c)Object.assign(c,{nome:d.nome,subtipo:d.subtipo,arq:!!d.arq});
+      else db.contas.push({id:uid(),nome:d.nome,tipo:'invest',subtipo:d.subtipo,
+        saldoInicial:parseMoney(d.saldoInicial),arq:false});
+      save();fecharMdl();render();
+    },c?'':'O que você já tem aplicado entra como saldo inicial e não conta como rendimento.');
   }
   if(tipo==='pessoa'){
     const p=id?pessoa(id):null;
@@ -1214,11 +1344,11 @@ function importar(file){
 }
 
 const VIEWS={inicio:vInicio,lancar:vLancar,extrato:vExtrato,cartoes:vCartoes,
-  receber:vReceber,orcamento:vOrcamento,relatorio:vRelatorio,config:vConfig};
+  receber:vReceber,invest:vInvest,orcamento:vOrcamento,relatorio:vRelatorio,config:vConfig};
 
 /* ============ eventos ============ */
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp],[data-info]');
+  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp],[data-atual],[data-info]');
   if(!t)return;
   const d=t.dataset;
   /* tocar numa marca do gráfico escreve o valor na linha de leitura do cartão */
@@ -1233,6 +1363,7 @@ document.addEventListener('click',e=>{
   if(d.mes){mes=d.mes;tab='extrato';render();return}
   if(d.desistir!==undefined&&d.desistir){desistir(d.desistir);return}
   if(d.selp){itensReceber(l=>l.devedorId===d.selp).forEach(l=>sel.add(l.id));render();return}
+  if(d.atual){atualizarValor(d.atual);return}
   if(d.lanc){abrirLanc(d.lanc);return}
   if(d.ed!==undefined){const[tp,id]=d.ed.split('|');editar(tp,id);return}
   if(d.pagfat){const[c,r]=d.pagfat.split('|');pagarFatura(c,r);return}
@@ -1441,6 +1572,28 @@ if(location.search.includes('teste')){
   ok(/R\$/.test(document.querySelector('.viz .lida').textContent),'tocar numa marca escreve o valor');
   mes='2019-01'; render();
   ok(document.querySelectorAll('.viz .c').length===4,'mês sem nenhum dado desenha sem quebrar');
+
+  /* investimentos: aplicação é conta, aporte é transferência */
+  db.contas.push({id:'I',nome:'CDB',tipo:'invest',subtipo:'CDB',saldoInicial:0,arq:false});
+  const dispAntes=saldoTotal(), patAntes=patrimonio();
+  novo={...novoVazio(),tipo:'transf',data:'2026-03-01',desc:'Aporte',valor:'2.000,00',contaId:'B',destId:'I'};
+  salvar();
+  ok(saldo('I')===200000,'aporte entra na aplicação');
+  ok(saldoTotal()===dispAntes-200000,'aporte sai do saldo disponível');
+  ok(patrimonio()===patAntes,'aporte não muda o patrimônio — o dinheiro só mudou de lugar');
+  ok(somaMeu(gastosMes('2026-03'))===0&&soma(receitasMes('2026-03'))===0,'aporte não é gasto nem receita');
+  ok(saldoDia('2026-03-01')===saldoDia('2026-02-28')-200000,'saldoDia enxerga o aporte saindo do disponível');
+  db.lanc.push({id:uid(),tipo:'rend',data:'2026-04-01',valor:15000,contaId:'I',pago:true,desc:'Rendimento'});
+  ok(rendimento('I')===15000&&aportado('I')===200000,'rendimento separado do aporte');
+  ok(soma(receitasMes('2026-04'))===0,'rendimento não conta como receita');
+  ok(saldoTotal()===dispAntes-200000,'rendimento não mexe no disponível');
+  ok(patrimonio()===patAntes+15000,'rendimento sobe o patrimônio');
+  db.lanc.push({id:uid(),tipo:'rend',data:'2026-05-01',valor:-4000,contaId:'I',pago:true,desc:'Perda'});
+  ok(saldo('I')===211000&&rendimento('I')===11000,'perda também entra');
+  ok(!contasAtivas(true).some(c=>c.tipo==='invest'),'aplicação não aparece para lançar despesa');
+  ok(contasAtivas(false,true).some(c=>c.tipo==='invest'),'mas aparece na transferência');
+  tab='invest'; render();
+  ok(/CDB/.test($('#view').innerHTML),'tela de investimentos lista a aplicação');
 
   if(real)localStorage.setItem(K,real); else localStorage.removeItem(K);
   load(); tab='inicio'; mes=mesDe(hoje()); novo.parcs=1; render();

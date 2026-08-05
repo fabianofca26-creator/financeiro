@@ -88,6 +88,21 @@ Tocar em qualquer barra, fatia ou dia escreve o valor embaixo do título. Nenhum
 
 As cores não foram escolhidas no olho — passaram por um validador de contraste e de daltonismo contra as duas superfícies do app, clara e escura.
 
+### Investimentos
+
+Cada aplicação (poupança, CDB, Tesouro, fundo…) é uma conta de um tipo próprio. Por isso **aportar e resgatar é transferência**: o dinheiro muda de lugar, não vira gasto nem receita.
+
+O valor de mercado é você quem informa — o app não tem internet e nunca vai buscar cotação. Ao dizer quanto a aplicação vale hoje, a diferença entra como rendimento. Cada aplicação mostra a data da última atualização, e o app avisa quando passa de três meses, porque aí o número na tela é história antiga.
+
+Dois números separados de propósito:
+
+- **Saldo atual**, na tela inicial, continua sendo só o que dá para gastar hoje. Aplicação não entra.
+- **Patrimônio**, na aba de investimentos, é saldo + aplicado.
+
+Rendimento não aparece como receita em relatório nenhum. Você não recebeu esse dinheiro: ele está lá dentro até ser resgatado.
+
+> Este é um registro do que você informa. Ele não recomenda onde aplicar, não projeta retorno e não opina sobre investimento nenhum.
+
 ### Contas fixas
 
 Cadastre uma vez (aluguel, luz, internet, salário) e elas nascem sozinhas como pendentes quando o mês vira. As marcadas como "valor estimado" aprendem o valor novo quando você paga um valor diferente.
@@ -120,4 +135,4 @@ node serve.js
 
 ## O que ele não faz
 
-Investimentos, metas de economia, juros do rotativo, importar extrato ou OFX, foto de comprovante, multiusuário e contabilidade de empresa. Tudo isso é de propósito — o app resolve o controle do dia a dia e para por aí.
+Cotação automática de ativo, metas de economia, juros do rotativo, importar extrato ou OFX, foto de comprovante, multiusuário e contabilidade de empresa. Tudo isso é de propósito — o app resolve o controle do dia a dia e para por aí.
