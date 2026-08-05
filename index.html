@@ -43,6 +43,10 @@ header.curto{padding-bottom:40px}
 .mes b{font-size:13px;min-width:74px;text-align:center;font-weight:650;letter-spacing:-.1px;color:#fff}
 .mes button{background:none;border:0;color:rgba(255,255,255,.85);font-size:16px;padding:7px 11px;cursor:pointer;line-height:1}
 .mes button:active{color:#fff}
+/* ajustes é raro: vive numa engrenagem no cabeçalho, não ocupa vaga na barra */
+.eng{background:rgba(255,255,255,.16);border:0;border-radius:10px;padding:7px;line-height:0;cursor:pointer;flex:0 0 auto}
+.eng svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.eng.on svg{opacity:1}
 
 /* barra de navegação fixa embaixo — no desktop vira uma ilha flutuante */
 #bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;gap:2px;
@@ -389,25 +393,24 @@ function gerarFixas(){
 
 /* ============ UI ============ */
 let tab='inicio', mes=mesDe(hoje());
+/* Carteira junta "me devem" e investimentos: as duas respondem "dinheiro meu que
+   não está na conta". Análise junta orçamento e relatório: as duas respondem
+   "como foi o mês". Assim cabem todos os destinos na barra, sem menu escondido. */
 const TITULO={inicio:'Início',lancar:'Lançar',extrato:'Extrato',cartoes:'Cartões',
-  receber:'Me devem',invest:'Investimentos',orcamento:'Orçamento',relatorio:'Relatório',config:'Ajustes'};
+  carteira:'Carteira',analise:'Análise',config:'Ajustes'};
 /* telas que dependem do mês mostram o seletor no cabeçalho; as outras, não */
-const POR_MES=['inicio','extrato','cartoes','orcamento','relatorio'];
+const POR_MES=['inicio','extrato','cartoes','analise'];
 const ICO={
   inicio:'<path d="M4 11 12 4l8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/>',
   extrato:'<path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 9h6M9 13h4"/>',
   lancar:'<path d="M12 5v14M5 12h14"/>',
   cartoes:'<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>',
-  receber:'<path d="M4 20V9l8-5 8 5v11"/><path d="M9.5 20v-5h5v5"/>',
-  invest:'<path d="M4 18 9.5 11l3.5 3.5L20 6"/><path d="M15 6h5v5"/>',
-  orcamento:'<path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 2.6A8.5 8.5 0 0 1 21.4 9H15z"/>',
-  relatorio:'<path d="M5 19V11M12 19V5M19 19v-6"/>',
+  carteira:'<ellipse cx="12" cy="6.4" rx="7" ry="2.6"/><path d="M5 6.4v5c0 1.44 3.13 2.6 7 2.6s7-1.16 7-2.6v-5"/><path d="M5 11.4v5c0 1.44 3.13 2.6 7 2.6s7-1.16 7-2.6v-5"/>',
+  analise:'<path d="M5 19V11M12 19V5M19 19v-6"/>',
   config:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.6 4.4a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.8 1z"/>',
-  mais:'<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>'
 };
 const svg=k=>`<svg viewBox="0 0 24 24">${ICO[k]}</svg>`;
-const BARRA=['inicio','extrato','lancar','cartoes','mais'];
-const NO_MENU=['receber','invest','orcamento','relatorio','config'];
+const BARRA=['inicio','extrato','lancar','cartoes','carteira','analise'];
 
 function toast(t){
   document.querySelectorAll('.toast').forEach(e=>e.remove());
@@ -420,23 +423,15 @@ function render(){
   document.querySelector('header').className=heroHtml?'':'curto';
   $('#hd').innerHTML=`<div class="hdtop"><h1>${TITULO[tab]}</h1>`+(porMes?
     `<div class="mes"><button data-act="mes-">‹</button><b>${lblMes(mes)}</b><button data-act="mes+">›</button></div>`:'')
+    +`<button class="eng ${tab==='config'?'on':''}" data-tab="config" aria-label="Ajustes">${svg('config')}</button>`
     +`</div>`+heroHtml;
-  const noMenu=NO_MENU.includes(tab), ar=aReceber();
+  const ar=aReceber();
   $('#bar').innerHTML=BARRA.map(k=>{
     if(k==='lancar')return `<button class="add" data-tab="lancar" aria-label="Lançar">${svg('lancar')}</button>`;
-    const on=k==='mais'?noMenu:tab===k;
-    return `<button data-${k==='mais'?'act="menu"':'tab="'+k+'"'} class="${on?'on':''}">${svg(k)}<span>${k==='mais'?'Mais':TITULO[k]}</span>${k==='mais'&&ar>0?'<i class="dot"></i>':''}</button>`;
+    return `<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}<span>${TITULO[k]}</span>${k==='carteira'&&ar>0?'<i class="dot"></i>':''}</button>`;
   }).join('');
   $('#view').innerHTML=VIEWS[tab]();
   window.scrollTo(0,0);
-}
-function menu(){
-  const ar=aReceber();
-  $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
-    <div class="grab"></div><div class="menu">
-    ${NO_MENU.map(k=>`<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}<span>${TITULO[k]}</span>
-      ${k==='receber'&&ar>0?`<span class="rt empc">${R(ar)}</span>`:''}</button>`).join('')}
-    </div></div></div>`;
 }
 
 /* saldo dentro da faixa colorida do cabeçalho */
@@ -459,8 +454,9 @@ function vInicio(){
     const ab=faturaAberto(c.id,ref), v=faturaVenc(c,ref);
     if(ab>0&&v<=lim&&!faturaEmAberto(c,ref))fat.push({c,ref,ab,v});
   }
-  /* parcela futura tem data lá na frente e não é "último lançamento" */
-  const ult=db.lanc.filter(l=>l.data<=h).sort((a,b)=>a.data<b.data?1:-1).slice(0,8);
+  /* parcela futura tem data lá na frente e não é "último lançamento".
+     rendimento também fica fora: não é coisa que você fez, é a aplicação rendendo. */
+  const ult=db.lanc.filter(l=>l.data<=h&&l.tipo!=='rend').sort((a,b)=>a.data<b.data?1:-1).slice(0,8);
 
   let bkp='';
   const dias=db.backup?diasEntre(new Date(db.backup).toISOString().slice(0,10),h):999;
@@ -471,10 +467,10 @@ function vInicio(){
     <div><small>Entrou em ${lblMes(mes)}</small><b class="pos">${R(r)}</b></div>
     <div><small>Saiu em ${lblMes(mes)}</small><b class="neg">${R(g)}</b></div>
   </div>
-  ${ar>0?`<div class="strip" data-tab="receber">
+  ${ar>0?`<div class="strip" data-tab="carteira">
     <div><div class="t empc">Me devem</div><div class="sub">${devedores().map(d=>d.nome).join(', ')} — toque para ver</div></div>
     <div class="v empc" style="font-size:18px">${R(ar)}</div></div>`:''}
-  ${inv>0?`<div class="strip" style="border-left-color:var(--ac)" data-tab="invest">
+  ${inv>0?`<div class="strip" style="border-left-color:var(--ac)" data-tab="carteira">
     <div><div class="t" style="color:var(--ac)">Investido</div>
     <div class="sub">${rnd>=0?'rendeu':'perdeu'} ${R(Math.abs(rnd))} — toque para ver</div></div>
     <div class="v" style="font-size:18px;color:var(--ac)">${R(inv)}</div></div>`:''}
@@ -705,13 +701,13 @@ function vReceber(){
       ${itensReceber(l=>l.devedorId===d.id).map(l=>linhaDeve(l,h)).join('')}`).join('')}
     </div>`:'';
 
-  return `<div class="c">
-    <div class="big"><div><small>Total a receber</small><strong class="empc">${R(total)}</strong>
+  if(!total)return '';   /* nada devendo: a seção some, o patrimônio no topo já diz isso */
+  return `<div class="c"><h2>Me devem</h2>
+    <div class="big"><div><small>A receber</small><strong class="empc">${R(total)}</strong>
     <div class="sub">${itensReceber().length} lançamento(s)</div></div></div>
-    ${total?`<button class="b" data-act="reembolso" ${selTot?'':'disabled style="opacity:.5"'}>Registrar recebimento${selTot?' — '+R(selTot):''}</button>
-      <button class="b gh" data-act="sel-nada">Limpar seleção</button>
-      <div class="hint">Marque os itens que entraram no pagamento e registre. O ✕ tira o item da lista e vira gasto seu, para quando você desistir de cobrar.</div>`
-     :'<div class="empty">Ninguém te deve nada.<br><span style="font-size:12px">Marque “Alguém vai me devolver” ao lançar um gasto.</span></div>'}
+    <button class="b" data-act="reembolso" ${selTot?'':'disabled style="opacity:.5"'}>Registrar recebimento${selTot?' — '+R(selTot):''}</button>
+    <button class="b gh" data-act="sel-nada">Limpar seleção</button>
+    <div class="hint">Marque os itens que entraram no pagamento e registre. O ✕ tira o item da lista e vira gasto seu, para quando você desistir de cobrar.</div>
   </div>
   ${secEmpresa}${secPessoas}
   ${recs.length?`<div class="c"><h2>Recebimentos</h2>${recs.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}</div><div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))} · ${(l.itens||[]).length} item(ns)</div></div><div class="v empc">+${R(l.valor)}</div></div>`).join('')}</div>`:''}`;
@@ -1000,6 +996,26 @@ function gAnual(){
 function vRelatorio(){
   return `<div class="viz">${gRosca()}${gSaldo()}${gComprometido()}${gAnual()}</div>`;
 }
+/* "como foi o mês": o teto por categoria e os gráficos respondem a mesma coisa */
+function vAnalise(){ return vOrcamento()+vRelatorio(); }
+
+/* "dinheiro meu que não está na conta": aplicado + o que me devem */
+function cardPatrimonio(){
+  const dis=saldoTotal(), inv=totalInvestido(), ar=aReceber(), rnd=totalRendimento();
+  return `<div class="c">
+    <div class="big"><div><small>Patrimônio</small><strong>${R(dis+inv+ar)}</strong></div></div>
+    <div style="margin-top:10px">
+      <div class="row"><div class="l"><div class="t">Em conta</div><div class="sub">é o que dá para gastar hoje</div></div>
+        <div class="v ${dis<0?'neg':''}">${R(dis)}</div></div>
+      ${inv?`<div class="row clk" data-ir="inv"><div class="l"><div class="t">Aplicado</div>
+        <div class="sub">${rnd>=0?'rendeu':'perdeu'} ${R(Math.abs(rnd))}</div></div>
+        <div class="v" style="color:var(--ac)">${R(inv)}</div></div>`:''}
+      ${ar?`<div class="row clk" data-ir="dev"><div class="l"><div class="t">Me devem</div>
+        <div class="sub">${devedores().map(d=>d.nome).join(', ')}</div></div>
+        <div class="v empc">${R(ar)}</div></div>`:''}
+    </div></div>`;
+}
+function vCarteira(){ return cardPatrimonio()+vInvest()+vReceber(); }
 
 /* ---- Investimentos ---- */
 const TIPOS_INV=['Poupança','CDB','Tesouro Direto','Fundo','LCI/LCA','Ações/FII','Cripto','Outro'];
@@ -1031,17 +1047,12 @@ function vInvest(){
     ${rosca(fat.slice(0,6),fat.slice(0,6).reduce((s,f)=>s+f.v,0),'da carteira','Composição da carteira')}</div>`:'';
 
   const velhas=apl.filter(c=>{const a=atualizadoEm(c.id);return !a||diasEntre(a,h)>90});
-  return `<div class="c">
+  return `<div class="c"><h2>Investimentos</h2>
     <div class="big">
-      <div><small>Total investido</small><strong>${R(tot)}</strong></div>
+      <div><small>Aplicado</small><strong>${R(tot)}</strong></div>
       <div><small>Rendimento</small><strong class="${rend<0?'neg':'pos'}">${rend>=0?'+':'−'}${R(Math.abs(rend))}</strong>
         <div class="sub">${apo>0?`${pct>=0?'+':''}${pct.toFixed(1)}% sobre ${R(apo)} aportados`:'sem aportes registrados'}</div></div>
     </div></div>
-
-  <div class="c">
-    <div class="big"><div><small>Patrimônio</small><strong>${R(patrimonio())}</strong>
-      <div class="sub">${R(saldoTotal())} em conta + ${R(tot)} aplicado</div></div></div>
-    <div class="hint">O saldo da tela inicial continua mostrando só o que dá para gastar hoje — aplicação não entra lá.</div></div>
 
   ${velhas.length?`<div class="warn">⚠️ ${velhas.length===1?'Uma aplicação está':`${velhas.length} aplicações estão`} sem atualizar há mais de 3 meses. O valor mostrado é o da última vez que você digitou.</div>`:''}
 
@@ -1344,11 +1355,11 @@ function importar(file){
 }
 
 const VIEWS={inicio:vInicio,lancar:vLancar,extrato:vExtrato,cartoes:vCartoes,
-  receber:vReceber,invest:vInvest,orcamento:vOrcamento,relatorio:vRelatorio,config:vConfig};
+  carteira:vCarteira,analise:vAnalise,config:vConfig};
 
 /* ============ eventos ============ */
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp],[data-atual],[data-info]');
+  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp],[data-atual],[data-ir],[data-info]');
   if(!t)return;
   const d=t.dataset;
   /* tocar numa marca do gráfico escreve o valor na linha de leitura do cartão */
@@ -1364,6 +1375,13 @@ document.addEventListener('click',e=>{
   if(d.desistir!==undefined&&d.desistir){desistir(d.desistir);return}
   if(d.selp){itensReceber(l=>l.devedorId===d.selp).forEach(l=>sel.add(l.id));render();return}
   if(d.atual){atualizarValor(d.atual);return}
+  /* linha do resumo leva até a seção correspondente na mesma tela */
+  if(d.ir){
+    const alvo=[...document.querySelectorAll('#view .c > h2')]
+      .find(h=>h.textContent===(d.ir==='inv'?'Investimentos':'Me devem'));
+    alvo?.closest('.c').scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
   if(d.lanc){abrirLanc(d.lanc);return}
   if(d.ed!==undefined){const[tp,id]=d.ed.split('|');editar(tp,id);return}
   if(d.pagfat){const[c,r]=d.pagfat.split('|');pagarFatura(c,r);return}
@@ -1372,7 +1390,6 @@ document.addEventListener('click',e=>{
   switch(a){
     case 'mes-':mes=addMes(mes,-1);render();break;
     case 'mes+':mes=addMes(mes,1);render();break;
-    case 'menu':menu();break;
     case 'salvar':salvar();break;
     case 'fechar':fecharMdl();break;
     /* clique no fundo escuro fecha; clique dentro da caixa, não.
@@ -1521,12 +1538,17 @@ if(location.search.includes('teste')){
   ok(db.contas.length===nc+1&&document.querySelector('.mdl'),'nome vazio não cria e mantém o modal aberto');
   clk('[data-act="fechar"]'); ok(!document.querySelector('.mdl'),'botão Cancelar fecha');
 
-  tab='inicio'; render(); clk('[data-act="menu"]');
-  ok(document.querySelectorAll('.menu button').length===4,'menu Mais com 4 itens');
-  clk('.menu [data-tab="orcamento"]');
-  ok(tab==='orcamento'&&!document.querySelector('.mdl'),'item do menu navega e fecha');
-  clk('[data-act="menu"]'); clk('.mdl .grab');
-  ok(!!document.querySelector('.mdl'),'clique dentro da caixa não fecha');
+  /* nenhum destino pode ficar escondido atrás de menu */
+  tab='inicio'; render();
+  ok(document.querySelectorAll('#bar button').length===6,'os 6 destinos cabem na barra');
+  ok(Object.keys(VIEWS).every(k=>k==='lancar'||k==='config'||BARRA.includes(k)),
+     'toda tela está na barra, exceto Lançar (é o +) e Ajustes (é a engrenagem)');
+  clk('#bar [data-tab="analise"]'); ok(tab==='analise','barra navega direto');
+  clk('.eng'); ok(tab==='config','engrenagem do cabeçalho abre os ajustes');
+  clk('#bar [data-tab="carteira"]'); ok(tab==='carteira','barra leva para a carteira');
+  /* o fundo escuro do modal continua fechando, e o miolo não */
+  tab='config'; render(); clk(achaEd('conta|'));
+  clk('.mdl h3'); ok(!!document.querySelector('.mdl'),'clique dentro da caixa não fecha');
   clk('.mask'); ok(!document.querySelector('.mdl'),'clique no fundo escuro fecha');
 
   /* rateio pela tela, que é o caminho que o usuário percorre de verdade */
@@ -1548,7 +1570,7 @@ if(location.search.includes('teste')){
   ok(!!lanche,'o lançamento do rateio foi criado para o Irmão');
   ok(lanche.valor===12000&&lanche.naoMeu===8000&&meu(lanche)===4000,'rateio: 120 saiu, 80 é dele, 40 é meu');
   ok(saldo('B')===saldoAntesRateio-12000,'rateio tira o valor cheio da conta');
-  tab='receber'; render();
+  tab='carteira'; render();
   clk('[data-selp="'+irmao.id+'"]');
   ok(sel.size===1,'“Marcar” seleciona os itens daquela pessoa');
   sel.clear();
@@ -1561,7 +1583,7 @@ if(location.search.includes('teste')){
   db.fixas.push({id:'FX',desc:'Net',tipo:'saida',valor:12000,dia:10,contaId:'B',catId:cm,ativa:true,ultimoMes:mesDe(hoje())});
   ok(comprometido(addMes(mesDe(hoje()),1)).fixas===12000,'mês futuro usa a regra da conta fixa');
   ok(comprometido(mesDe(hoje())).fixas===0,'mês atual não conta a fixa que já virou lançamento');
-  mes='2026-01'; tab='relatorio'; render();
+  mes='2026-01'; tab='analise'; render();
   ok(document.querySelectorAll('.viz .c').length===4,'relatório tem os quatro gráficos');
   ok(document.querySelectorAll('.viz [data-info]').length>20,'as marcas respondem ao toque');
   ok([...document.querySelectorAll('.viz .lida')].every(l=>l.textContent.trim()),
@@ -1592,7 +1614,7 @@ if(location.search.includes('teste')){
   ok(saldo('I')===211000&&rendimento('I')===11000,'perda também entra');
   ok(!contasAtivas(true).some(c=>c.tipo==='invest'),'aplicação não aparece para lançar despesa');
   ok(contasAtivas(false,true).some(c=>c.tipo==='invest'),'mas aparece na transferência');
-  tab='invest'; render();
+  tab='carteira'; render();
   ok(/CDB/.test($('#view').innerHTML),'tela de investimentos lista a aplicação');
 
   if(real)localStorage.setItem(K,real); else localStorage.removeItem(K);

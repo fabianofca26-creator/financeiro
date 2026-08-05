@@ -18,6 +18,14 @@ Depois vá em **Mais › Ajustes** e cadastre suas contas com o saldo de hoje, e
 
 > **Seus dados ficam só no seu aparelho**, no `localStorage` do navegador. Nada é enviado para lugar nenhum. Isso também quer dizer que **limpar os dados de navegação apaga tudo** — exporte o backup de vez em quando. O app avisa quando passa de 7 dias sem backup.
 
+## As telas
+
+Uma barra fixa embaixo com **todos** os destinos — nada escondido atrás de menu:
+
+**Início** · **Extrato** · **+** (lançar) · **Cartões** · **Carteira** · **Análise**, mais a engrenagem dos ajustes no cabeçalho.
+
+**Carteira** responde "dinheiro meu que não está na conta": patrimônio no topo, depois os investimentos e quem te deve. **Análise** responde "como foi o mês": o orçamento por categoria e os quatro gráficos.
+
 ## Como ele pensa
 
 Estas são as decisões que fazem os números baterem. Vale ler antes de estranhar algum total.
