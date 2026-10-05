@@ -160,7 +160,12 @@ button.s.p{background:var(--acBtn);border-color:var(--acBtn);color:#fff}
 .menu svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;color:var(--mut)}
 .menu button.on svg{color:var(--ac)}
 .menu .rt{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));background:var(--tx);color:var(--card);padding:12px 18px;border-radius:12px;font-size:13px;font-weight:650;z-index:99;max-width:88%;text-align:center;box-shadow:0 8px 26px rgba(0,0,0,.28)}
+/* o aviso pode cobrir o botão Salvar: deixa o toque atravessar, só o próprio
+   botão dele é clicável, senão ele engole o lançamento seguinte */
+/* acima da barra E do botão fixo de Salvar: o atalho do aviso é clicável e,
+   mais baixo, ficava bem em cima do Salvar, roubando o toque */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(172px + env(safe-area-inset-bottom));background:var(--tx);color:var(--card);padding:12px 18px;border-radius:12px;font-size:13px;font-weight:650;z-index:99;max-width:88%;text-align:center;box-shadow:0 8px 26px rgba(0,0,0,.28);pointer-events:none}
+.toast .tacao{pointer-events:auto}
 .warn{background:var(--wnbg);color:var(--wn);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:650;margin-top:12px;line-height:1.45}
 .hint{font-size:12.5px;color:var(--mut);margin-top:9px;line-height:1.55}
 .it{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--bd2)}
@@ -169,6 +174,11 @@ button.s.p{background:var(--acBtn);border-color:var(--acBtn);color:#fff}
 /* roxo só na lista de quem te deve; no extrato e na fatura é a cor da marca */
 #lista .it input[type=checkbox],.mdl .it input[type=checkbox]{accent-color:var(--acBtn)}
 .clk{cursor:pointer}
+/* o Salvar não pode ficar debaixo da barra: lançando em sequência, seria uma
+   rolagem antes de cada lançamento. Gruda logo acima dela. */
+.fixo{position:sticky;bottom:calc(84px + env(safe-area-inset-bottom));z-index:5;
+ background:var(--bg);padding:4px 0 8px;margin-top:4px}
+@media(min-width:900px){.fixo{bottom:16px}}
 .grade{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .grade button{padding:13px 0;text-transform:capitalize}
 .tacao{background:none;border:0;color:var(--card);font:800 13px/1 inherit;text-decoration:underline;margin-left:14px;cursor:pointer;padding:0}
@@ -458,8 +468,8 @@ function toast(t,acao){
     d.appendChild(b);
   }
   document.body.appendChild(d);
-  /* com botão o aviso fica mais tempo: você precisa conseguir alcançá-lo */
-  setTimeout(()=>d.remove(),acao?10000:3200);
+  /* desfazer precisa de tempo para ser alcançado; uma confirmação, não */
+  setTimeout(()=>d.remove(),acao?(acao.seg||10)*1000:3200);
 }
 function render(){
   const porMes=POR_MES.includes(tab);
@@ -603,8 +613,8 @@ function vLancar(){
         <div><label>Data</label><input data-f="data" type="date" value="${novo.data}"></div>
       </div>
       <label>Descrição</label><input data-f="desc" placeholder="Ex: saque" value="${esc(novo.desc)}">
-      <button class="b" data-act="salvar">Salvar transferência</button>
-      <div class="hint">Transferência não entra em nenhum relatório — só muda o dinheiro de lugar.</div></div>`;
+      <div class="hint">Transferência não entra em nenhum relatório — só muda o dinheiro de lugar.</div></div>
+      <div class="fixo"><button class="b" data-act="salvar">Salvar transferência</button></div>`;
   }
 
   return `<div class="c">${segTipo()}
@@ -634,7 +644,8 @@ function vLancar(){
            Você marca cada um como pago quando pagar.</div>`
         :`<div class="chk"><input type="checkbox" data-f="pago" ${novo.pago?'checked':''}><span>${novo.tipo==='saida'?'Já paguei':'Já recebi'}</span></div>
           ${!novo.pago?'<div class="hint">Fica pendente: não mexe no saldo, aparece em “a vencer”.</div>':''}`)}
-    <button class="b" data-act="salvar">Salvar</button></div>`;
+    </div>
+    <div class="fixo"><button class="b" data-act="salvar">Salvar</button></div>`;
 }
 function segTipo(){
   return `<div class="seg">${[['saida','Saída'],['entrada','Entrada'],['transf','Transferência']]
@@ -716,11 +727,14 @@ function salvar(){
     }
   }
   save();
-  const d=novo.data;
+  const d=novo.data, feito=`${novo.desc||'Lançamento'} · ${R(v)}`;
   novo={...novoVazio(),tipo:novo.tipo,data:d,contaId:novo.contaId,catId:novo.catId,
         destId:novo.destId,devedorId:novo.devedorId};
-  toast('Lançado');
-  tab='extrato'; mes=mesDe(d); render();
+  mes=mesDe(d);
+  /* continua em Lançar: lançar é coisa que se faz em sequência, e o render()
+     devolve o cursor ao valor, então dá para emendar o próximo direto. */
+  render();
+  toast(feito+' ✓',{rotulo:'Ver',seg:4,fn:()=>{tab='extrato';busca='';render()}});
 }
 
 /* ---- Extrato ---- */
@@ -2017,6 +2031,22 @@ if(location.search.includes('teste')){
   ok(novo.tocouCat===true,'escolher na mão desliga a sugestão');
   campoDesc.value='posto ipiranga'; campoDesc.dispatchEvent(new Event('input',{bubbles:true}));
   ok(novo.catId===''&&$('#dicaCat').textContent==='','e ela não volta a mexer');
+
+  /* lançar em sequência: fica na tela, com o Salvar sempre alcançável */
+  tab='lancar'; novo={...novoVazio(),contaId:'B',valor:'100,00',desc:'Teste seq',catId:cm}; render();
+  const qtdAntes=db.lanc.length;
+  clk('[data-act="salvar"]');
+  ok(db.lanc.length===qtdAntes+1,'salvou');
+  ok(tab==='lancar','continua em Lançar, não vai para o extrato');
+  ok(novo.valor===''&&novo.desc===''&&novo.contaId==='B','formulário limpo, conta mantida');
+  ok(!!document.querySelector('.toast .tacao'),'o aviso traz o atalho para conferir');
+  window.scrollTo(0,0);
+  const btSalvar=document.querySelector('[data-act="salvar"]').getBoundingClientRect();
+  const sobBotao=document.elementFromPoint(btSalvar.left+btSalvar.width/2,btSalvar.top+btSalvar.height/2);
+  ok(sobBotao&&sobBotao.closest('[data-act="salvar"]'),
+     'o toque no Salvar chega no Salvar: nem a barra nem o aviso ficam na frente');
+  ok(btSalvar.bottom<=document.querySelector('#bar').getBoundingClientRect().top+1,
+     'e ele não passa por baixo da barra');
 
   /* a tela de lançar abre com o cursor no valor */
   novo={...novoVazio(),contaId:'B'}; tab='lancar'; render();

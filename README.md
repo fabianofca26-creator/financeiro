@@ -67,6 +67,10 @@ O topo da lista sempre diz quantos lançamentos estão na tela e quanto somam em
 
 Abra um lançamento e use **Lançar outro igual**: o formulário abre preenchido com a mesma descrição, conta e categoria, na data de hoje, para você só conferir o valor. Numa compra parcelada ele repete a compra inteira, não uma parcela solta.
 
+### Lançar vários seguidos
+
+Salvar não leva para outra tela: o formulário se limpa, mantém a conta e a data, e o cursor volta para o valor — dá para emendar o próximo direto. Um aviso confirma o que foi lançado e traz um atalho para conferir no extrato. O botão Salvar fica fixo acima da barra, então não é preciso rolar antes de cada lançamento.
+
 ### O app aprende suas categorias
 
 Digite a descrição e a categoria vem sozinha, copiada do seu lançamento parecido mais recente — "posto" vira Transporte porque foi assim das últimas vezes. Uma linha abaixo diz de onde ela veio, para você conferir. Escolher a categoria na mão desliga a sugestão naquele lançamento: ela nunca sobrescreve o que você decidiu.
