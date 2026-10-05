@@ -169,6 +169,9 @@ button.s.p{background:var(--acBtn);border-color:var(--acBtn);color:#fff}
 /* roxo só na lista de quem te deve; no extrato e na fatura é a cor da marca */
 #lista .it input[type=checkbox],.mdl .it input[type=checkbox]{accent-color:var(--acBtn)}
 .clk{cursor:pointer}
+.grade{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.grade button{padding:13px 0;text-transform:capitalize}
+.tacao{background:none;border:0;color:var(--card);font:800 13px/1 inherit;text-decoration:underline;margin-left:14px;cursor:pointer;padding:0}
 
 /* ---- gráficos ----
    Paleta validada com o script do guia de visualização, contra as superfícies
@@ -445,17 +448,25 @@ const rotulo=k=>CURTO[k]||TITULO[k];
 /* relatório e orçamento na ponta esquerda; o dia a dia perto do polegar */
 const BARRA=['relatorio','orcamento','inicio','lancar','extrato','cartoes','carteira'];
 
-function toast(t){
+function toast(t,acao){
   document.querySelectorAll('.toast').forEach(e=>e.remove());
   const d=document.createElement('div'); d.className='toast'; d.textContent=t;
-  document.body.appendChild(d); setTimeout(()=>d.remove(),3200);
+  if(acao){
+    const b=document.createElement('button');
+    b.className='tacao'; b.textContent=acao.rotulo;
+    b.onclick=()=>{d.remove();acao.fn()};
+    d.appendChild(b);
+  }
+  document.body.appendChild(d);
+  /* com botão o aviso fica mais tempo: você precisa conseguir alcançá-lo */
+  setTimeout(()=>d.remove(),acao?10000:3200);
 }
 function render(){
   const porMes=POR_MES.includes(tab);
   const heroHtml=tab==='inicio'?hero():'';
   document.querySelector('header').className=heroHtml?'':'curto';
   $('#hd').innerHTML=`<div class="hdtop"><h1>${TITULO[tab]}</h1>`+(porMes?
-    `<div class="mes"><button data-act="mes-">‹</button><b>${lblMes(mes)}</b><button data-act="mes+">›</button></div>`:'')
+    `<div class="mes"><button data-act="mes-">‹</button><b data-act="selmes" class="clk">${lblMes(mes)}</b><button data-act="mes+">›</button></div>`:'')
     +`<button class="eng ${tab==='config'?'on':''}" data-tab="config" aria-label="Ajustes">${svg('config')}</button>`
     +`</div>`+heroHtml;
   const ar=aReceber();
@@ -469,6 +480,31 @@ function render(){
   }).join('');
   $('#view').innerHTML=VIEWS[tab]();
   window.scrollTo(0,0);
+  /* o valor é o primeiro campo a preencher: a tela abre com o cursor nele */
+  if(tab==='lancar'&&!novo.valor){const v=$('[data-f="valor"]'); if(v)v.focus();}
+}
+
+/* ir direto a um mês: de seta em seta, voltar um ano são doze toques */
+let anoSel=null;
+function seletorMes(){
+  const a=anoSel??+mes.slice(0,4), atual=mesDe(hoje());
+  const temLanc=ym=>db.lanc.some(l=>mesDe(l.data)===ym);
+  $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
+    <div class="grab"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <h3 style="flex:1;margin:0">Ir para o mês</h3>
+      <div class="mes" style="background:var(--bg);border:1px solid var(--bd)">
+        <button data-act="ano-" style="color:var(--tx)">‹</button>
+        <b style="color:var(--tx);min-width:52px">${a}</b>
+        <button data-act="ano+" style="color:var(--tx)">›</button></div>
+    </div>
+    <div class="grade">${MESES.map((m,i)=>{
+      const ym=`${a}-${p2(i+1)}`;
+      return `<button class="s ${ym===mes?'p':''}" data-irmes="${ym}"
+        ${temLanc(ym)?'':'style="opacity:.45"'}>${m}</button>`;}).join('')}</div>
+    <div class="hint">Os meses apagados não têm nenhum lançamento.</div>
+    ${mes!==atual?`<button class="b gh" data-irmes="${atual}">Voltar para ${lblMes(atual)}</button>`:''}
+    <button class="b gh" data-act="fechar">Fechar</button></div></div>`;
 }
 
 /* saldo dentro da faixa colorida do cabeçalho */
@@ -586,7 +622,8 @@ function vLancar(){
         </div>
         <div class="hint">${dicaRateio()}</div>`
         :'<div class="hint">Cadastre uma pessoa em Ajustes › Pessoas primeiro.</div>'):''}`:''}
-    <label>Categoria</label><select data-f="catId">${opts(cats,novo.catId)}</select>
+    <label>Categoria</label><select data-f="catId" data-tocar>${opts(cats,novo.catId)}</select>
+    <div class="hint" id="dicaCat">${esc(dicaCategoria())}</div>
     <label>Parcelas</label><input data-f="parcs" type="number" min="1" max="48" value="${novo.parcs}" data-r>
     ${novo.parcs>1?`<div class="hint">${previewParcelas()}</div>`:''}
     ${cartao
@@ -603,6 +640,28 @@ function segTipo(){
   return `<div class="seg">${[['saida','Saída'],['entrada','Entrada'],['transf','Transferência']]
     .map(([k,l])=>`<button data-tp="${k}" class="${novo.tipo===k?'on':''}">${l}</button>`).join('')}</div>`;
 }
+/* Aprende sozinho: a categoria vem do lançamento parecido mais recente.
+   Só sugere enquanto você não escolher categoria na mão — depois disso, cala. */
+function sugestao(){
+  const q=norm(novo.desc.trim());
+  if(q.length<3||novo.tocouCat)return null;
+  return db.lanc.filter(l=>l.tipo===novo.tipo&&l.catId&&cat(l.catId)&&!cat(l.catId).arq&&norm(l.desc).includes(q))
+                .sort((a,b)=>a.data<b.data?1:-1)[0]||null;
+}
+function dicaCategoria(){
+  const s=sugestao();
+  return s?`Veio do seu “${s.desc}” de ${dDia(s.data)}. Troque se não for.`:'';
+}
+/* aplica sem redesenhar a tela, senão o teclado perde o foco a cada letra */
+function aplicarSugestao(){
+  const s=sugestao(); const d=$('#dicaCat');
+  if(s&&s.catId!==novo.catId){
+    novo.catId=s.catId;
+    const el=$('[data-f="catId"]'); if(el)el.value=s.catId;
+  }
+  if(d)d.textContent=dicaCategoria();
+}
+
 /* deixa a divisão visível antes de salvar, que é onde o erro de rateio aparece */
 function dicaRateio(){
   const v=parseMoney(novo.valor);
@@ -687,7 +746,7 @@ function listaExtrato(){
   const ls=filtraExtrato(), q=busca.trim();
   if(!ls.length)return `<div class="empty">${q?`Nada encontrado para “${esc(q)}”.`:`Nenhum lançamento em ${lblMes(mes)}.`}</div>`;
   const tot=ls.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0);
-  const cab=q?`<div class="sub" style="margin-bottom:8px">${ls.length} resultado(s) em todos os meses${tot?` · ${R(tot)} em saídas`:''}</div>`:'';
+  const cab=`<div class="sub" style="margin-bottom:8px">${ls.length} ${q?'resultado(s) em todos os meses':`lançamento(s) em ${lblMes(mes)}`}${tot?` · ${R(tot)} em saídas`:''}</div>`;
 
   /* no filtro de pendentes dá para dar baixa em várias de uma vez, que é o
      ritual de fim de mês: abrir o extrato do banco e bater conta por conta */
@@ -1437,6 +1496,14 @@ function excluir(id){
   const ids=new Set(grupo.map(x=>x.id));
   db.lanc=db.lanc.filter(x=>!ids.has(x.id));
   save();fecharMdl();render();
+  /* excluir era a única ação sem volta; agora dá para desfazer antes do aviso sumir */
+  const copia=grupo.map(x=>({...x}));
+  toast(grupo.length>1?`${grupo.length} parcelas excluídas`:'Lançamento excluído',
+    {rotulo:'Desfazer',fn:()=>{
+      const vivos=new Set(db.lanc.map(x=>x.id));
+      db.lanc.push(...copia.filter(x=>!vivos.has(x.id)));
+      save(); toast('Restaurado'); render();
+    }});
 }
 function pagarFatura(cid,ref){
   const c=conta(cid), ab=faturaAberto(cid,ref);
@@ -1646,7 +1713,7 @@ const VIEWS={inicio:vInicio,lancar:vLancar,extrato:vExtrato,cartoes:vCartoes,
 
 /* ============ eventos ============ */
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp],[data-atual],[data-ir],[data-info]');
+  const t=e.target.closest('[data-tab],[data-tp],[data-fl],[data-act],[data-lanc],[data-ed],[data-pagfat],[data-vfat],[data-desistir],[data-mes],[data-selp],[data-atual],[data-ir],[data-irmes],[data-info]');
   if(!t)return;
   const d=t.dataset;
   /* tocar numa marca do gráfico escreve o valor na linha de leitura do cartão */
@@ -1663,6 +1730,7 @@ document.addEventListener('click',e=>{
   if(d.desistir!==undefined&&d.desistir){desistir(d.desistir);return}
   if(d.selp){itensReceber(l=>l.devedorId===d.selp).forEach(l=>sel.add(l.id));render();return}
   if(d.atual){atualizarValor(d.atual);return}
+  if(d.irmes){fecharMdl();mes=d.irmes;anoSel=null;render();return}
   /* linha do resumo leva até a seção correspondente na mesma tela */
   if(d.ir){
     const alvo=[...document.querySelectorAll('#view .c > h2')]
@@ -1677,6 +1745,9 @@ document.addEventListener('click',e=>{
   const[a,arg]=(d.act||'').split('|');
   switch(a){
     case 'mes-':mes=addMes(mes,-1);render();break;
+    case 'selmes':anoSel=+mes.slice(0,4);seletorMes();break;
+    case 'ano-':anoSel=(anoSel??+mes.slice(0,4))-1;seletorMes();break;
+    case 'ano+':anoSel=(anoSel??+mes.slice(0,4))+1;seletorMes();break;
     case 'mes+':mes=addMes(mes,1);render();break;
     case 'salvar':salvar();break;
     case 'fechar':fecharMdl();break;
@@ -1718,6 +1789,7 @@ document.addEventListener('input',e=>{
   }
   const f=e.target.dataset.f;
   if(f)novo[f]=e.target.type==='checkbox'?e.target.checked:e.target.value;
+  if(f==='desc')aplicarSugestao();
 });
 document.addEventListener('change',e=>{
   const el=e.target;
@@ -1735,6 +1807,8 @@ document.addEventListener('change',e=>{
   const f=el.dataset.f;
   if(f){
     novo[f]=el.type==='checkbox'?el.checked:el.value;
+    /* escolheu categoria na mão: a sugestão para de mexer nela */
+    if(el.dataset.tocar!==undefined){novo.tocouCat=true;const d=$('#dicaCat');if(d)d.textContent='';}
     if(el.dataset.r!==undefined)render();
   }
 });
@@ -1930,6 +2004,48 @@ if(location.search.includes('teste')){
   ok(/Nada encontrado/.test($('#lista').innerHTML),'diz quando não acha');
   busca=''; render();
   ok(document.querySelectorAll('#lista .row').length===soDoMes,'limpar a busca volta para o mês');
+
+  /* a categoria vem sozinha do lançamento parecido mais recente */
+  db.lanc.push({id:uid(),tipo:'saida',data:'2026-02-10',desc:'Posto Shell',valor:25000,catId:cm,contaId:'B',pago:true});
+  tab='lancar'; novo={...novoVazio(),contaId:'B'}; render();
+  const campoDesc=$('[data-f="desc"]');
+  campoDesc.value='posto'; campoDesc.dispatchEvent(new Event('input',{bubbles:true}));
+  ok(novo.catId===cm,'digitar a descrição já escolhe a categoria usada da última vez');
+  ok(/Posto Shell/.test($('#dicaCat').textContent),'e diz de onde ela veio');
+  const selCat=$('[data-f="catId"]');
+  selCat.value=''; selCat.dispatchEvent(new Event('change',{bubbles:true}));
+  ok(novo.tocouCat===true,'escolher na mão desliga a sugestão');
+  campoDesc.value='posto ipiranga'; campoDesc.dispatchEvent(new Event('input',{bubbles:true}));
+  ok(novo.catId===''&&$('#dicaCat').textContent==='','e ela não volta a mexer');
+
+  /* a tela de lançar abre com o cursor no valor */
+  novo={...novoVazio(),contaId:'B'}; tab='lancar'; render();
+  ok(document.activeElement===$('[data-f="valor"]'),'cursor já no valor');
+  novo={...novoVazio(),contaId:'B',valor:'10,00'}; render();
+  ok(document.activeElement!==$('[data-f="valor"]'),'com valor digitado não rouba o foco');
+
+  /* excluir deixa de ser sem volta */
+  const vitima=db.lanc.find(l=>l.desc==='Posto Shell');
+  const antesDel=db.lanc.length, saldoDel=saldo('B');
+  const confOrig=window.confirm; window.confirm=()=>true;
+  excluir(vitima.id);
+  ok(db.lanc.length===antesDel-1,'excluiu');
+  ok($('.toast .tacao'),'o aviso traz o botão Desfazer');
+  clk('.toast .tacao');
+  window.confirm=confOrig;
+  ok(db.lanc.length===antesDel&&saldo('B')===saldoDel,'desfazer devolve o lançamento e o saldo');
+  ok(db.lanc.filter(l=>l.id===vitima.id).length===1,'sem duplicar');
+
+  /* pular direto para um mês */
+  tab='inicio'; mes='2026-01'; render();
+  clk('[data-act="selmes"]');
+  ok(document.querySelectorAll('[data-irmes]').length>=12,'a grade traz os 12 meses');
+  clk('[data-irmes="2026-02"]');
+  ok(mes==='2026-02'&&!document.querySelector('.mdl'),'pula para o mês e fecha');
+
+  /* o extrato soma o que está na tela, com ou sem busca */
+  tab='extrato'; busca=''; filtro='todos'; mes='2026-01'; render();
+  ok(/lançamento\(s\) em jan\/2026/.test($('#lista').innerHTML),'conta os lançamentos do mês sem busca');
 
   /* baixa em lote: o ritual de fim de mês */
   mes=mesDe(hoje()); busca=''; filtro='pend'; selExt.clear(); tab='extrato'; render();

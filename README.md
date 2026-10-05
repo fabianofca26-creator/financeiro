@@ -14,7 +14,7 @@ No celular, abra esse endereço no Chrome e use **"Instalar app"** no menu (⋮)
 
 Ou baixe o [`index.html`](index.html) e abra com duplo clique — funciona igual, sem depender de nada.
 
-Depois vá em **Mais › Ajustes** e cadastre suas contas com o saldo de hoje, e então os cartões.
+Toque no nome do mês no cabeçalho para pular direto para outro — os meses sem nenhum lançamento aparecem apagados. Depois vá em **Ajustes** e cadastre suas contas com o saldo de hoje, e então os cartões.
 
 > **Seus dados ficam só no seu aparelho**, no `localStorage` do navegador. Nada é enviado para lugar nenhum. Isso também quer dizer que **limpar os dados de navegação apaga tudo** — exporte o backup de vez em quando. O app avisa quando passa de 7 dias sem backup.
 
@@ -61,11 +61,17 @@ Carnê de loja, boleto parcelado, financiamento: escolha a conta, informe o tota
 
 ### Achar um lançamento antigo
 
-A busca no Extrato atravessa **todos os meses**, não só o que está no cabeçalho. Ela ignora acentos e maiúsculas, e procura também no nome da conta, da categoria e de quem te deve. O cabeçalho do resultado soma as saídas encontradas — buscar o nome de uma obra responde de imediato quanto já foi gasto nela.
+O topo da lista sempre diz quantos lançamentos estão na tela e quanto somam em saídas. A busca atravessa **todos os meses**, não só o que está no cabeçalho. Ela ignora acentos e maiúsculas, e procura também no nome da conta, da categoria e de quem te deve. O cabeçalho do resultado soma as saídas encontradas — buscar o nome de uma obra responde de imediato quanto já foi gasto nela.
 
 ### Lançar outro igual
 
 Abra um lançamento e use **Lançar outro igual**: o formulário abre preenchido com a mesma descrição, conta e categoria, na data de hoje, para você só conferir o valor. Numa compra parcelada ele repete a compra inteira, não uma parcela solta.
+
+### O app aprende suas categorias
+
+Digite a descrição e a categoria vem sozinha, copiada do seu lançamento parecido mais recente — "posto" vira Transporte porque foi assim das últimas vezes. Uma linha abaixo diz de onde ela veio, para você conferir. Escolher a categoria na mão desliga a sugestão naquele lançamento: ela nunca sobrescreve o que você decidiu.
+
+Não há regra para cadastrar: ele só olha o que você já lançou, e melhora conforme você usa.
 
 ### Dar baixa em várias de uma vez
 
