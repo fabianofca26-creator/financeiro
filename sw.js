@@ -11,7 +11,7 @@ const ESSENCIAL = ['./', './index.html', './manifest.webmanifest', './icon-192.p
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE)
-      .then(c => c.addAll(ESSENCIAL))
+      .then(c => c.addAll(ESSENCIAL.map(u => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -24,10 +24,19 @@ self.addEventListener('activate', e => {
   );
 });
 
+/* O Pages manda Cache-Control: max-age=600 em tudo. Sem isto, "rede primeiro" ainda
+   podia ser respondido pelo cache HTTP do navegador e o app continuava dez minutos
+   na versão velha depois de uma atualização. cache:'reload' passa por cima — só no
+   que é nosso; script de terceiro (Google) segue o cache normal dele. */
+const semCacheHttp = req => {
+  if (new URL(req.url).origin !== self.location.origin) return req;
+  return new Request(req.url, { cache: 'reload', credentials: 'same-origin' });
+};
+
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request)
+    fetch(semCacheHttp(e.request))
       .then(r => {
         /* só guarda resposta boa: cachear um erro deixaria o app quebrado offline */
         if (r && r.ok) {
