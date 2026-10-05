@@ -67,6 +67,14 @@ A busca no Extrato atravessa **todos os meses**, não só o que está no cabeça
 
 Abra um lançamento e use **Lançar outro igual**: o formulário abre preenchido com a mesma descrição, conta e categoria, na data de hoje, para você só conferir o valor. Numa compra parcelada ele repete a compra inteira, não uma parcela solta.
 
+### Dar baixa em várias de uma vez
+
+No Extrato, o filtro **Pendentes** mostra cada conta com uma caixa de marcar. Você bate com o extrato do banco, marca o que já saiu e dá baixa nas quatro de uma vez — o botão mostra antes quanto isso tira do saldo. A baixa usa o valor lançado; se o real foi outro, edite o lançamento antes.
+
+### Conferir a fatura item por item
+
+Em Cartões, **Ver itens** abre a fatura com uma caixa por linha. Vá marcando conforme bate com a fatura do banco: o placar mostra quantos faltam e quanto somam. O que sobrar sem marca é o que você não reconheceu. A marca fica gravada, então dá para parar no meio e voltar depois, e um botão limpa tudo para o mês seguinte.
+
 ### O mês em que um gasto conta
 
 O saldo das contas é **regime de caixa**: só muda quando o dinheiro se move de verdade.
@@ -137,7 +145,7 @@ Valores são guardados como **inteiros em centavos**, nunca como número decimal
 
 ## Backup e uso em dois aparelhos
 
-O backup é um arquivo `.json` exportado pelo botão em **Ajustes**. Importar **substitui tudo**, não mescla.
+O backup é um arquivo `.json` exportado pelo botão em **Ajustes**. Ali também sai um **CSV** para abrir no Excel — com ponto e vírgula e vírgula decimal, que é o que o Excel brasileiro espera, e acentos que não viram lixo. Importar **substitui tudo**, não mescla.
 
 Se usar no celular e no PC, escolha um como oficial (o celular, normalmente, que é onde você lança na hora) e deixe o outro só para consultar. Editar nos dois e importar depois faz um lado perder lançamentos.
 

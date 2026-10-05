@@ -166,6 +166,8 @@ button.s.p{background:var(--acBtn);border-color:var(--acBtn);color:#fff}
 .it{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--bd2)}
 .it:last-child{border-bottom:0}
 .it input[type=checkbox]{width:21px;height:21px;accent-color:var(--emp);flex:0 0 auto}
+/* roxo só na lista de quem te deve; no extrato e na fatura é a cor da marca */
+#lista .it input[type=checkbox],.mdl .it input[type=checkbox]{accent-color:var(--acBtn)}
 .clk{cursor:pointer}
 
 /* ---- gráficos ----
@@ -663,7 +665,7 @@ function salvar(){
 }
 
 /* ---- Extrato ---- */
-let filtro='todos', busca='';
+let filtro='todos', busca='', selExt=new Set();
 /* acentos atrapalham quem digita com pressa: "cafe" tem que achar "café" */
 const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 const textoLanc=l=>[l.desc,nomeConta(l.contaId),l.catId&&cat(l.catId)?cat(l.catId).nome:'',
@@ -686,8 +688,39 @@ function listaExtrato(){
   if(!ls.length)return `<div class="empty">${q?`Nada encontrado para “${esc(q)}”.`:`Nenhum lançamento em ${lblMes(mes)}.`}</div>`;
   const tot=ls.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0);
   const cab=q?`<div class="sub" style="margin-bottom:8px">${ls.length} resultado(s) em todos os meses${tot?` · ${R(tot)} em saídas`:''}</div>`:'';
+
+  /* no filtro de pendentes dá para dar baixa em várias de uma vez, que é o
+     ritual de fim de mês: abrir o extrato do banco e bater conta por conta */
+  /* compra no cartão nasce efetivada, então nunca cai neste filtro — a baixa
+     dela é o pagamento da fatura, na tela de Cartões */
+  if(filtro==='pend'){
+    const h=hoje(), marc=ls.filter(l=>selExt.has(l.id));
+    const soma=marc.reduce((s,l)=>s+(l.tipo==='entrada'?l.valor:-l.valor),0);
+    return cab+`<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="s" data-act="selx-tudo">Marcar todas</button>
+        <button class="s" data-act="selx-nada">Limpar</button></div>`
+      +ls.map(l=>`<div class="it"><input type="checkbox" data-selx="${l.id}" ${selExt.has(l.id)?'checked':''}>
+        <div class="l" style="flex:1;min-width:0"><div class="t">${esc(l.desc)}</div>
+        <div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))}${l.data<h?' · <span class="wnc">atrasado</span>':''}</div></div>
+        <div class="v ${l.tipo==='entrada'?'pos':'neg'}">${R(l.valor)}</div></div>`).join('')
+      +`<button class="b" data-act="baixar" ${marc.length?'':'disabled style="opacity:.5"'}>
+        ${marc.length?`Dar baixa em ${marc.length} — saldo ${soma>=0?'+':'−'}${R(Math.abs(soma))}`:'Marque o que já foi pago'}</button>
+        <div class="hint">Dá baixa pelo valor que está lançado. Se o valor real foi outro, abra o lançamento e edite antes.</div>`;
+  }
+
   return cab+ls.slice(0,TETO_BUSCA).map(linhaLanc).join('')
     +(ls.length>TETO_BUSCA?`<div class="hint">Mostrando os ${TETO_BUSCA} mais recentes de ${ls.length}. Refine a busca para ver o resto.</div>`:'');
+}
+/* dar baixa: fixa de valor estimado aprende o valor, igual ao caminho de uma só */
+function baixarSelecionados(){
+  const alvo=filtraExtrato().filter(l=>selExt.has(l.id));
+  if(!alvo.length)return;
+  for(const l of alvo){
+    l.pago=true;
+    const f=l.fixaId?db.fixas.find(x=>x.id===l.fixaId):null;
+    if(f&&f.estimado)f.valor=l.valor;
+  }
+  selExt.clear(); save(); toast(`${alvo.length} lançamento(s) baixados`); render();
 }
 function vExtrato(){
   const f=[['todos','Todos'],['saida','Saídas'],['entrada','Entradas'],['pend','Pendentes'],['emp','Me devem']];
@@ -1189,6 +1222,7 @@ function vConfig(){
   <div class="sub">${dias===null?'Você nunca exportou.':`Última exportação há ${dias} dia(s).`}</div>
   <button class="b" data-act="export">Exportar backup (.json)</button>
   <button class="b gh" data-act="import">Importar backup</button>
+  <button class="b gh" data-act="export-csv">Exportar CSV (para planilha)</button>
   <input type="file" id="fimp" accept=".json,application/json" style="display:none">
   <div class="hint">Os dados ficam só no navegador deste aparelho. Limpar dados de navegação apaga tudo. Importar <b>substitui</b> tudo — não mescla.</div></div>
 
@@ -1415,14 +1449,57 @@ function pagarFatura(cid,ref){
     save();fecharMdl();toast('Fatura paga');render();
   },`Valor: <b>${R(ab)}</b> (fatura inteira).`);
 }
+/* conferir item por item contra a fatura do banco, para achar cobrança que não é sua.
+   A marca fica no lançamento, então dá para parar no meio e voltar depois. */
 function verFatura(cid,ref){
   const it=faturaItens(cid,ref).sort((a,b)=>a.data<b.data?-1:1);
+  const ok=it.filter(l=>l.conf), falta=it.filter(l=>!l.conf);
+  const faltaR=falta.reduce((s,l)=>s+l.valor,0);
   $('#mdl').innerHTML=`<div class="mask" data-act="fora"><div class="mdl">
+    <div class="grab"></div>
     <h3>Fatura ${lblMes(ref)} — ${esc(nomeConta(cid))}</h3>
-    ${it.length?it.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}${l.parcs>1?` <span class="tag k">${l.parc}/${l.parcs}</span>`:''}${l.devedorId?` <span class="tag e">${esc(nomePessoa(l.devedorId))}</span>`:''}</div><div class="sub">${dDia(l.data)}</div></div><div class="v">${R(l.valor)}</div></div>`).join('')
+    ${it.length?`<div class="sub">Conferidos ${ok.length} de ${it.length}${falta.length?` · faltam ${R(faltaR)}`:' · tudo conferido ✓'}</div>`:''}
+    ${it.length?it.map(l=>`<div class="it"><input type="checkbox" data-conf="${l.id}" data-fat="${cid}|${ref}" ${l.conf?'checked':''}>
+      <div class="l" style="flex:1;min-width:0"><div class="t" ${l.conf?'style="opacity:.55"':''}>${esc(l.desc)}${l.parcs>1?` <span class="tag k">${l.parc}/${l.parcs}</span>`:''}${l.devedorId?` <span class="tag e">${esc(nomePessoa(l.devedorId))}</span>`:''}</div>
+      <div class="sub">${dDia(l.data)}</div></div>
+      <div class="v" ${l.conf?'style="opacity:.55"':''}>${R(l.valor)}</div></div>`).join('')
     :'<div class="empty">Fatura vazia.</div>'}
     <div class="row"><div class="l"><b>Total</b></div><div class="v neg">${R(faturaTotal(cid,ref))}</div></div>
+    ${ok.length?`<button class="b gh" data-act="desconf|${cid}|${ref}">Desmarcar os conferidos</button>`:''}
+    <div class="hint">Vá marcando cada linha conforme bate com a fatura do banco. O que sobrar sem marca é o que você não reconheceu.</div>
     <button class="b gh" data-act="fechar">Fechar</button></div></div>`;
+}
+function desconferir(cid,ref){
+  faturaItens(cid,ref).forEach(l=>delete l.conf);
+  save(); verFatura(cid,ref);
+}
+
+/* CSV para abrir no Excel: ponto e vírgula e vírgula decimal são o padrão pt-BR,
+   e o BOM é o que faz o Excel não trocar os acentos por lixo. */
+function exportarCSV(){
+  const cel=v=>{const s=String(v??'');return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const num=c=>(c/100).toFixed(2).replace('.',',');
+  const cab=['Data','Tipo','Descrição','Categoria','Conta','Valor','Pago','Parcela','Quem deve','Valor devido'];
+  const TIPO={saida:'Saída',entrada:'Entrada',transf:'Transferência',fatura:'Pagamento de fatura',
+    reemb:'Recebimento',rend:'Rendimento'};
+  const linhas=db.lanc.slice().sort((a,b)=>a.data<b.data?-1:1).map(l=>[
+    l.data.split('-').reverse().join('/'),
+    TIPO[l.tipo]||l.tipo,
+    l.desc,
+    l.catId&&cat(l.catId)?cat(l.catId).nome:'',
+    nomeConta(l.contaId)+(l.destId?' → '+nomeConta(l.destId):''),
+    num(l.valor),
+    l.tipo==='saida'||l.tipo==='entrada'?(l.pago?'sim':'não'):'',
+    l.parcs>1?`${l.parc}/${l.parcs}`:'',
+    l.devedorId?nomePessoa(l.devedorId):'',
+    l.naoMeu?num(l.naoMeu):''
+  ].map(cel).join(';'));
+  const txt='﻿'+[cab.join(';'),...linhas].join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([txt],{type:'text/csv;charset=utf-8'}));
+  a.download=`financeiro-${hoje()}.csv`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  toast(`${linhas.length} lançamentos exportados`);
 }
 
 /* ---- Google Drive ----
@@ -1579,9 +1656,9 @@ document.addEventListener('click',e=>{
     return;
   }
   /* a busca não sobrevive à troca de tela: voltar ao extrato e ver outros meses confunde */
-  if(d.tab){fecharMdl();busca='';tab=d.tab;render();return}
+  if(d.tab){fecharMdl();busca='';selExt.clear();tab=d.tab;render();return}
   if(d.tp){novo.tipo=d.tp;novo.catId='';render();return}
-  if(d.fl){filtro=d.fl;render();return}
+  if(d.fl){filtro=d.fl;selExt.clear();render();return}
   if(d.mes){mes=d.mes;tab='extrato';render();return}
   if(d.desistir!==undefined&&d.desistir){desistir(d.desistir);return}
   if(d.selp){itensReceber(l=>l.devedorId===d.selp).forEach(l=>sel.add(l.id));render();return}
@@ -1609,6 +1686,11 @@ document.addEventListener('click',e=>{
     case 'mdl-ok':mdlSave&&mdlSave();break;
     case 'pago':togglePago(arg);break;
     case 'repetir':repetir(arg);break;
+    case 'selx-tudo':filtraExtrato().forEach(l=>selExt.add(l.id));$('#lista').innerHTML=listaExtrato();break;
+    case 'selx-nada':selExt.clear();$('#lista').innerHTML=listaExtrato();break;
+    case 'baixar':baixarSelecionados();break;
+    case 'export-csv':exportarCSV();break;
+    case 'desconf':{const[c,r]=(d.act||'').split('|').slice(1);desconferir(c,r);break;}
     case 'editar-lanc':editarLanc(arg);break;
     case 'excluir':excluir(arg);break;
     case 'sel-emp':itensReceber(daEmpresa).forEach(l=>sel.add(l.id));render();break;
@@ -1640,6 +1722,10 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const el=e.target;
   if(el.dataset.sel){el.checked?sel.add(el.dataset.sel):sel.delete(el.dataset.sel);render();return}
+  if(el.dataset.selx){el.checked?selExt.add(el.dataset.selx):selExt.delete(el.dataset.selx);
+    $('#lista').innerHTML=listaExtrato();return}
+  if(el.dataset.conf){const l=db.lanc.find(x=>x.id===el.dataset.conf);
+    if(l){l.conf=el.checked;save();const[c,r]=el.dataset.fat.split('|');verFatura(c,r)}return}
   if(el.dataset.teto!==undefined){
     const v=parseMoney(el.value);
     if(v>0)db.orc[el.dataset.teto]=v; else delete db.orc[el.dataset.teto];
@@ -1844,6 +1930,46 @@ if(location.search.includes('teste')){
   ok(/Nada encontrado/.test($('#lista').innerHTML),'diz quando não acha');
   busca=''; render();
   ok(document.querySelectorAll('#lista .row').length===soDoMes,'limpar a busca volta para o mês');
+
+  /* baixa em lote: o ritual de fim de mês */
+  mes=mesDe(hoje()); busca=''; filtro='pend'; selExt.clear(); tab='extrato'; render();
+  const pend=document.querySelectorAll('[data-selx]').length;
+  if(pend){
+    clk('[data-act="selx-tudo"]');
+    ok(selExt.size===pend,'“Marcar todas” pega todos os pendentes');
+    const antes=saldo('B'), baixados=filtraExtrato().filter(l=>selExt.has(l.id));
+    const efeito=baixados.reduce((s,l)=>s+(l.tipo==='entrada'?l.valor:-l.valor),0);
+    clk('[data-act="baixar"]');
+    ok(baixados.every(l=>l.pago),'todos viraram pagos');
+    ok(saldo('B')===antes+efeito,'o saldo mudou exatamente o que foi baixado');
+    ok(selExt.size===0,'a seleção se limpa depois da baixa');
+  }
+
+  /* conferência da fatura: marca gravada, dá para parar no meio */
+  const refConf=faturaRef(conta('C'),'2026-01-20');
+  verFatura('C',refConf);
+  const itensFat=document.querySelectorAll('[data-conf]').length;
+  ok(itensFat>0,'a fatura abre com caixas de conferência');
+  ok(/Conferidos 0 de /.test($('#mdl').innerHTML),'placar começa zerado');
+  let marcados=0;
+  while(document.querySelector('[data-conf]:not(:checked)')&&marcados<60){
+    const e=document.querySelector('[data-conf]:not(:checked)');
+    e.checked=true; e.dispatchEvent(new Event('change',{bubbles:true})); marcados++;
+  }
+  ok(marcados===itensFat&&/tudo conferido/.test($('#mdl').innerHTML),'conferindo tudo, o placar fecha');
+  ok(faturaItens('C',refConf).every(l=>l.conf===true),'a marca fica gravada no lançamento');
+  clk('[data-act^="desconf"]');
+  ok(faturaItens('C',refConf).every(l=>l.conf===undefined),'desmarcar limpa para o mês seguinte');
+  fecharMdl();
+
+  /* CSV: o Excel brasileiro quer ponto e vírgula, vírgula decimal e BOM */
+  let csvBlob=null;
+  const oCreate=document.createElement.bind(document), oURL=URL.createObjectURL;
+  document.createElement=t=>{const e=oCreate(t); if(t==='a')e.click=function(){}; return e;};
+  URL.createObjectURL=b=>{csvBlob=b; return 'blob:teste';};
+  exportarCSV();
+  document.createElement=oCreate; URL.createObjectURL=oURL;
+  ok(!!csvBlob,'o CSV foi gerado');
 
   /* repetir traz a compra inteira, não uma parcela solta */
   const g1=db.lanc.find(l=>l.desc==='Geladeira'&&l.parc===2);
