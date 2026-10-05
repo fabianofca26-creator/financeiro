@@ -329,6 +329,16 @@ const faturaItens=(cid,ref)=>{const c=conta(cid);return db.lanc.filter(l=>l.tipo
 const faturaTotal=(cid,ref)=>faturaItens(cid,ref).reduce((s,l)=>s+l.valor,0);
 const faturaPago=(cid,ref)=>db.lanc.filter(l=>l.tipo==='fatura'&&l.destId===cid&&l.faturaRef===ref).reduce((s,l)=>s+l.valor,0);
 const faturaAberto=(cid,ref)=>faturaTotal(cid,ref)-faturaPago(cid,ref);
+/* a fatura aberta separada em parcelas e compras à vista.
+   fatura paga pela metade é raro (a regra é pagar inteira), então a sobra sai proporcional
+   em vez de inventar qual compra foi quitada — e parc+avista continua igual a faturaAberto */
+function faturaAbertoSep(cid,ref){
+  const it=faturaItens(cid,ref), tot=it.reduce((s,l)=>s+l.valor,0);
+  const ab=tot-faturaPago(cid,ref);
+  if(ab<=0)return {parc:0,avista:0};
+  const p=Math.round(it.filter(l=>l.parcs>1).reduce((s,l)=>s+l.valor,0)*ab/tot);
+  return {parc:p,avista:ab-p};
+}
 /* fatura ainda não fechou? */
 function faturaEmAberto(c,ref){
   const h=hoje();
@@ -1024,12 +1034,17 @@ function saldoContaAte(cid,d){
 /* quanto de um mês já está vendido antes de começar */
 function comprometido(ym){
   const atual=mesDe(hoje());
-  let cartao=0;
+  let parc=0,avista=0;
   const cds=contaRel?cartoes().filter(c=>c.id===contaRel):cartoes();
   for(const c of cds)for(const ref of refsCartao(c.id)){
-    const ab=faturaAberto(c.id,ref);
-    if(ab>0&&mesDe(faturaVenc(c,ref))===ym)cartao+=ab;
+    if(mesDe(faturaVenc(c,ref))!==ym)continue;
+    const p=faturaAbertoSep(c.id,ref); parc+=p.parc; avista+=p.avista;
   }
+  /* parcela fora do cartão não tem fatura: nasce como lançamento pendente lá na frente.
+     não tem fixaId, então não colide com a conta das fixas abaixo */
+  parc+=db.lanc.filter(l=>l.tipo==='saida'&&!l.pago&&l.parcs>1&&!l.fixaId&&mesDe(l.data)===ym
+                       &&!isCartao(l.contaId)&&(!contaRel||l.contaId===contaRel))
+               .reduce((s,l)=>s+l.valor,0);
   let fixas;
   if(ym<=atual)  /* já viraram lançamento: usa o que está pendente, senão conta duas vezes */
     fixas=db.lanc.filter(l=>l.fixaId&&l.tipo==='saida'&&!l.pago&&mesDe(l.data)===ym&&!isCartao(l.contaId)&&(!contaRel||l.contaId===contaRel))
@@ -1037,7 +1052,7 @@ function comprometido(ym){
   else
     fixas=db.fixas.filter(f=>f.ativa&&f.tipo==='saida'&&!isCartao(f.contaId)&&(!contaRel||f.contaId===contaRel))
                   .reduce((s,f)=>s+f.valor,0);
-  return {cartao,fixas,total:cartao+fixas};
+  return {parc,avista,fixas,total:parc+avista+fixas};
 }
 
 /* ============ desenho ============ */
@@ -1198,7 +1213,9 @@ function gSaldo(){
     corte>0&&corte<nd?'Traço cheio é o que já aconteceu; tracejado é a projeção com o que ainda vence.':'');
 }
 
-/* 3. o que mais dói: quanto dos próximos meses já está vendido */
+/* 3. o que mais dói: quanto dos próximos meses já está vendido.
+   as duas faixas quentes são o cartão; o azul das fixas fica separado de propósito */
+const PILHA=[['fixas','var(--s1)','fixas'],['parc','var(--s2)','parcelas'],['avista','var(--s4)','à vista']];
 function gComprometido(){
   const base=mesDe(hoje());
   const ms=[]; for(let i=0;i<6;i++)ms.push(addMes(base,i));
@@ -1211,23 +1228,28 @@ function gComprometido(){
   const py=v=>Y1-v/e.top*(Y1-Y0);
   const barras=dd.map((d,i)=>{
     const cx=X0+(i+.5)*((X1-X0)/6)-larg/2;
-    const hc=(Y1-py(d.cartao)), hf=(Y1-py(d.fixas));
-    /* 2px de folga entre os dois pedaços da pilha */
-    const yF=py(d.total), yC=Y1-hc;
-    return `<g ${inf(`${lblMes(d.m)}: ${R(d.total)} — cartão ${R(d.cartao)}, fixas ${R(d.fixas)}`)}>
+    const segs=PILHA.filter(([k])=>d[k]>0);
+    let cum=0;
+    /* 2px de folga na base de cada pedaço de cima; só o último arredonda o topo */
+    const corpo=segs.map(([k,cor],j)=>{
+      const vh=d[k]/e.top*(Y1-Y0); cum+=vh;
+      return `<path d="${col(cx,Y1-cum,larg,vh-(j?2:0),j===segs.length-1?4:0)}" fill="${cor}"/>`;
+    }).join('');
+    const det=segs.map(([k,,nm])=>`${nm} ${R(d[k])}`).join(', ');
+    return `<g ${inf(`${lblMes(d.m)}: ${R(d.total)} — ${det||'nada'}`)}>
       <rect x="${cx-3}" y="${Y0}" width="${larg+6}" height="${Y1-Y0}" fill="transparent"/>
-      ${d.cartao?`<path d="${col(cx,yC,larg,hc,d.fixas?0:4)}" fill="var(--s1)"/>`:''}
-      ${d.fixas?`<path d="${col(cx,yF,larg,hf-(d.cartao?2:0),4)}" fill="var(--s2)"/>`:''}
+      ${corpo}
       <text class="tk" x="${cx+larg/2}" y="${Y1+16}" text-anchor="middle">${MESES[+d.m.slice(5)-1]}</text></g>`;
   }).join('');
   const gy=[0,e.top/2,e.top].map(v=>`<line class="gd" x1="${X0}" y1="${py(v).toFixed(1)}" x2="${X1}" y2="${py(v).toFixed(1)}"/>
     <text class="tk" x="${X0-5}" y="${(py(v)+3).toFixed(1)}" text-anchor="end">${kR(v)}</text>`).join('');
   const pior=dd.reduce((a,b)=>b.total>a.total?b:a);
   return bloco('Já comprometido nos próximos 6 meses',
-    `Pior mês: <b>${lblMes(pior.m)}</b> com <b>${R(pior.total)}</b>`,
+    `Pior mês: <b>${lblMes(pior.m)}</b> com <b>${R(pior.total)}</b>`+(pior.parc?` — <b>${R(pior.parc)}</b> só de parcelas`:''),
     `<svg viewBox="0 0 320 138" role="img" aria-label="Comprometido por mês">${gy}${barras}</svg>
-     <div class="leg"><div><i style="background:var(--s1)"></i><span class="nm">Parcelas do cartão</span></div>
-     <div><i style="background:var(--s2)"></i><span class="nm">Contas fixas</span></div></div>`,
+     <div class="leg"><div><i style="background:var(--s1)"></i><span class="nm">Contas fixas</span></div>
+     <div><i style="background:var(--s2)"></i><span class="nm">Parcelas</span></div>
+     <div><i style="background:var(--s4)"></i><span class="nm">Cartão à vista</span></div></div>`,
     'Parcela de compra da empresa entra aqui também — o dinheiro sai da sua conta antes do reembolso chegar.');
 }
 
@@ -1563,7 +1585,7 @@ function editar(tipo,id){
       if(p)Object.assign(p,{nome:d.nome,empresa:!!d.empresa,arq:!!d.arq});
       else db.pessoas.push({id:uid(),nome:d.nome,empresa:!!d.empresa,arq:false});
       save();fecharMdl();render();
-    },'',c?`<button class="b dg" data-act="excluir-cad|pessoa|${c.id}">Excluir</button>`:'');
+    },'',p?`<button class="b dg" data-act="excluir-cad|pessoa|${p.id}">Excluir</button>`:'');
   }
   if(tipo==='cat'){
     const c=id?cat(id):null;
@@ -2079,7 +2101,7 @@ if(location.search.includes('teste')){
   ok(faturaTotal('C','2026-02')===130000,'ajuste não entra na fatura');
   // fumaça de UI: nenhuma tela pode estourar erro ao desenhar
   for(const t of Object.keys(VIEWS)){try{tab=t;render()}catch(e){throw new Error('FALHOU ao desenhar '+t+': '+e.message)}}
-  ok(document.querySelectorAll('#bar button').length===5,'barra inferior com 5 botões');
+  ok(document.querySelectorAll('#bar button').length===BARRA.length,'a barra desenha um botão por destino');
 
   /* clicar de verdade, não só chamar as funções. um stopPropagation no modal já
      matou o clique de TODO botão de modal sem nenhum teste perceber. */
@@ -2144,10 +2166,20 @@ if(location.search.includes('teste')){
   ok(escala(4880).top % escala(4880).passo === 0,'eixo fecha em múltiplo do passo');
   [1,999,1000,123456].forEach(v=>{const s=escala(v);ok(s.top>=v&&s.passo>0,'escala cobre '+v)});
   ok(col(0,0,10,0)==='','coluna de altura zero não desenha nada');
-  ok(saldoDia('2026-01-31')===saldo('B'),'saldoDia fecha igual ao saldo da conta no fim do mês');
+  /* duas contas independentes têm de dar o mesmo número numa data passada.
+     comparar com saldo('B') era frágil: qualquer lançamento de hoje criado por outro teste derrubava */
+  ok(saldoDia('2026-01-31')===db.contas.filter(c=>ehGasto(c)&&!c.arq)
+       .reduce((t,c)=>t+saldoContaAte(c.id,'2026-01-31'),0),
+     'saldo do dia fecha com a soma das contas até aquela data');
   db.fixas.push({id:'FX',desc:'Net',tipo:'saida',valor:12000,dia:10,contaId:'B',catId:cm,ativa:true,ultimoMes:mesDe(hoje())});
   ok(comprometido(addMes(mesDe(hoje()),1)).fixas===12000,'mês futuro usa a regra da conta fixa');
   ok(comprometido(mesDe(hoje())).fixas===0,'mês atual não conta a fixa que já virou lançamento');
+  /* as três faixas da pilha: parcela do cartão, compra à vista no cartão e fixa */
+  lanc({data:'2026-10-20',desc:'Pneu',valor:'400,00',contaId:'C',parcs:2});
+  lanc({data:'2026-10-21',desc:'Pizza',valor:'100,00',contaId:'C'});
+  const cp=comprometido(mesDe(faturaVenc(conta('C'),'2026-10')));
+  ok(cp.parc===20000&&cp.avista===10000,'a fatura se divide em parcela e compra à vista');
+  ok(cp.parc+cp.avista+cp.fixas===cp.total,'as faixas da pilha somam o total comprometido');
   mes='2026-01'; tab='relatorio'; render();
   ok(document.querySelectorAll('.viz .c').length===4,'relatório tem os quatro gráficos');
   ok(document.querySelectorAll('.viz [data-info]').length>20,'as marcas respondem ao toque');
@@ -2170,6 +2202,7 @@ if(location.search.includes('teste')){
   ok(carne.every(l=>!l.pago),'nascem pendentes, uma por mês');
   ok(new Set(carne.map(l=>mesDe(l.data))).size===6,'uma em cada mês');
   ok(saldo('B')===saldoAntesCarne,'nada sai do saldo até você pagar');
+  ok(comprometido(mesDe(carne[5].data)).parc===20000,'parcela de carnê entra na faixa de parcelas, mesmo sem fatura');
 
   /* busca atravessa os meses; sem busca, só o mês do cabeçalho */
   db.lanc.push({id:uid(),tipo:'saida',data:'2019-03-10',desc:'Café antigo',valor:2200,catId:cm,contaId:'B',pago:true});
@@ -2337,12 +2370,14 @@ if(location.search.includes('teste')){
   /* investimentos: aplicação é conta, aporte é transferência */
   db.contas.push({id:'I',nome:'CDB',tipo:'invest',subtipo:'CDB',saldoInicial:0,arq:false});
   const dispAntes=saldoTotal(), patAntes=patrimonio();
+  /* março já tem a parcela da geladeira: o que importa é que o aporte não SOME nada */
+  const gMar=somaMeu(gastosMes('2026-03')), rMar=soma(receitasMes('2026-03'));
   novo={...novoVazio(),tipo:'transf',data:'2026-03-01',desc:'Aporte',valor:'2.000,00',contaId:'B',destId:'I'};
   salvar();
   ok(saldo('I')===200000,'aporte entra na aplicação');
   ok(saldoTotal()===dispAntes-200000,'aporte sai do saldo disponível');
   ok(patrimonio()===patAntes,'aporte não muda o patrimônio — o dinheiro só mudou de lugar');
-  ok(somaMeu(gastosMes('2026-03'))===0&&soma(receitasMes('2026-03'))===0,'aporte não é gasto nem receita');
+  ok(somaMeu(gastosMes('2026-03'))===gMar&&soma(receitasMes('2026-03'))===rMar,'aporte não é gasto nem receita');
   ok(saldoDia('2026-03-01')===saldoDia('2026-02-28')-200000,'saldoDia enxerga o aporte saindo do disponível');
   db.lanc.push({id:uid(),tipo:'rend',data:'2026-04-01',valor:15000,contaId:'I',pago:true,desc:'Rendimento'});
   ok(rendimento('I')===15000&&aportado('I')===200000,'rendimento separado do aporte');

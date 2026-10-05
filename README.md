@@ -129,7 +129,7 @@ Quatro gráficos, desenhados em SVG puro — o app não carrega biblioteca nenhu
 
 - **Para onde foi** — rosca das 5 maiores categorias do mês, o resto somado em "Outros". Os valores ficam na legenda, não em cima das fatias.
 - **Saldo ao longo do mês** — dia a dia, traço cheio no que já aconteceu e tracejado na projeção até o fim do mês, já descontando o que vence e as faturas.
-- **Já comprometido** — quanto dos próximos 6 meses está vendido antes de começar, separando parcelas do cartão de contas fixas.
+- **Já comprometido** — quanto dos próximos 6 meses está vendido antes de começar, em três faixas: **contas fixas**, **parcelas** e **cartão à vista**. A separação importa porque as três se desfazem de formas diferentes: a fixa você cancela, a parcela você só espera terminar, e a compra à vista é a única que depende do que você fizer este mês. Parcela de carnê ou boleto entra na mesma faixa das parcelas do cartão, mesmo não tendo fatura. Fatura paga pela metade — raro, a regra é pagar inteira — divide a sobra proporcionalmente em vez de inventar qual compra foi quitada.
 - **Entrou e saiu** — 12 meses lado a lado, para enxergar em que época do ano aperta.
 
 Tocar em qualquer barra, fatia ou dia escreve o valor embaixo do título. Nenhum valor depende disso: cada gráfico já mostra o seu número principal sem nenhum toque, e a rosca traz a tabela inteira na legenda.
