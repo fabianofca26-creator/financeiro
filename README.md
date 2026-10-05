@@ -55,6 +55,18 @@ Parcelamento vira N lançamentos, um em cada fatura seguida. A tela do cartão m
 
 A fatura é paga inteira, num clique. Esse é o único momento em que o cartão mexe no seu dinheiro.
 
+### Parcelar fora do cartão
+
+Carnê de loja, boleto parcelado, financiamento: escolha a conta, informe o total e o número de parcelas. Como não há fatura, cada parcela vira um **lançamento pendente**, um por mês, no mesmo dia. Você marca cada um como pago quando pagar, e até lá nada sai do seu saldo — só aparece em "a vencer" e no previsto do mês.
+
+### Achar um lançamento antigo
+
+A busca no Extrato atravessa **todos os meses**, não só o que está no cabeçalho. Ela ignora acentos e maiúsculas, e procura também no nome da conta, da categoria e de quem te deve. O cabeçalho do resultado soma as saídas encontradas — buscar o nome de uma obra responde de imediato quanto já foi gasto nela.
+
+### Lançar outro igual
+
+Abra um lançamento e use **Lançar outro igual**: o formulário abre preenchido com a mesma descrição, conta e categoria, na data de hoje, para você só conferir o valor. Numa compra parcelada ele repete a compra inteira, não uma parcela solta.
+
 ### O mês em que um gasto conta
 
 O saldo das contas é **regime de caixa**: só muda quando o dinheiro se move de verdade.

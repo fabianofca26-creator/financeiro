@@ -585,11 +585,16 @@ function vLancar(){
         <div class="hint">${dicaRateio()}</div>`
         :'<div class="hint">Cadastre uma pessoa em Ajustes › Pessoas primeiro.</div>'):''}`:''}
     <label>Categoria</label><select data-f="catId">${opts(cats,novo.catId)}</select>
-    ${cartao?`<label>Parcelas</label><input data-f="parcs" type="number" min="1" max="48" value="${novo.parcs}" data-r>
-      ${novo.parcs>1?`<div class="hint">${previewParcelas()}</div>`:''}
-      <div class="hint">Compra no cartão entra na fatura de <b>${lblMes(faturaRef(conta(novo.contaId),novo.data))}</b>.</div>`
-     :`<div class="chk"><input type="checkbox" data-f="pago" ${novo.pago?'checked':''}><span>${novo.tipo==='saida'?'Já paguei':'Já recebi'}</span></div>
-       ${!novo.pago?'<div class="hint">Fica pendente: não mexe no saldo, aparece em “a vencer”.</div>':''}`}
+    <label>Parcelas</label><input data-f="parcs" type="number" min="1" max="48" value="${novo.parcs}" data-r>
+    ${novo.parcs>1?`<div class="hint">${previewParcelas()}</div>`:''}
+    ${cartao
+      ?`<div class="hint">Compra no cartão entra na fatura de <b>${lblMes(faturaRef(conta(novo.contaId),novo.data))}</b>.</div>`
+      :(novo.parcs>1
+        /* fora do cartão não há fatura: cada parcela vira uma conta a vencer */
+        ?`<div class="hint">Cria ${novo.parcs} lançamentos pendentes, um por mês, todo dia ${+novo.data.slice(8)}.
+           Você marca cada um como pago quando pagar.</div>`
+        :`<div class="chk"><input type="checkbox" data-f="pago" ${novo.pago?'checked':''}><span>${novo.tipo==='saida'?'Já paguei':'Já recebi'}</span></div>
+          ${!novo.pago?'<div class="hint">Fica pendente: não mexe no saldo, aparece em “a vencer”.</div>':''}`)}
     <button class="b" data-act="salvar">Salvar</button></div>`;
 }
 function segTipo(){
@@ -628,7 +633,8 @@ function salvar(){
       contaId:novo.contaId,destId:novo.destId,pago:true});
   }else{
     const cartao=isCartao(novo.contaId);
-    const n=cartao?Math.max(1,Math.min(48,+novo.parcs||1)):1;
+    /* parcela existe em qualquer conta: carnê de loja e boleto parcelado também parcelam */
+    const n=Math.max(1,Math.min(48,+novo.parcs||1));
     const partes=divide(v,n), compraId=uid();
     /* quanto do total não é gasto seu; em branco = te devem tudo */
     const devem=novo.tipo==='saida'&&novo.devem&&novo.devedorId;
@@ -638,7 +644,8 @@ function salvar(){
       db.lanc.push({id:uid(),tipo:novo.tipo,data:i?addMesData(novo.data,i):novo.data,
         desc:novo.desc||'(sem descrição)',valor:partes[i],
         catId:novo.catId,contaId:novo.contaId,
-        pago:cartao?true:!!novo.pago,
+        /* parcela fora do cartão nasce pendente: você paga uma por mês */
+        pago:cartao?true:(n>1?false:!!novo.pago),
         devedorId:dev>0?novo.devedorId:null,
         naoMeu:dev>0?fatias[i]:0,
         /* ...mas a cobrança vem inteira no mês da compra, então o crédito fica todo na 1ª */
@@ -656,17 +663,38 @@ function salvar(){
 }
 
 /* ---- Extrato ---- */
-let filtro='todos';
-function vExtrato(){
-  let ls=db.lanc.filter(l=>mesDe(l.data)===mes);
+let filtro='todos', busca='';
+/* acentos atrapalham quem digita com pressa: "cafe" tem que achar "café" */
+const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const textoLanc=l=>[l.desc,nomeConta(l.contaId),l.catId&&cat(l.catId)?cat(l.catId).nome:'',
+  l.devedorId?nomePessoa(l.devedorId):''].join(' ');
+const TETO_BUSCA=300;
+
+function filtraExtrato(){
+  const q=norm(busca.trim());
+  /* buscando, vale o acervo inteiro; sem busca, só o mês do cabeçalho */
+  let ls=q?db.lanc.slice():db.lanc.filter(l=>mesDe(l.data)===mes);
   if(filtro==='pend')ls=ls.filter(l=>!l.pago&&!l.ajuste);
   if(filtro==='emp')ls=ls.filter(l=>l.devedorId);
   if(filtro==='saida')ls=ls.filter(l=>l.tipo==='saida'||l.tipo==='fatura');
   if(filtro==='entrada')ls=ls.filter(l=>l.tipo==='entrada'||l.tipo==='reemb');
-  ls.sort((a,b)=>a.data<b.data?1:(a.data>b.data?-1:0));
+  if(q)ls=ls.filter(l=>norm(textoLanc(l)).includes(q));
+  return ls.sort((a,b)=>a.data<b.data?1:(a.data>b.data?-1:0));
+}
+function listaExtrato(){
+  const ls=filtraExtrato(), q=busca.trim();
+  if(!ls.length)return `<div class="empty">${q?`Nada encontrado para “${esc(q)}”.`:`Nenhum lançamento em ${lblMes(mes)}.`}</div>`;
+  const tot=ls.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0);
+  const cab=q?`<div class="sub" style="margin-bottom:8px">${ls.length} resultado(s) em todos os meses${tot?` · ${R(tot)} em saídas`:''}</div>`:'';
+  return cab+ls.slice(0,TETO_BUSCA).map(linhaLanc).join('')
+    +(ls.length>TETO_BUSCA?`<div class="hint">Mostrando os ${TETO_BUSCA} mais recentes de ${ls.length}. Refine a busca para ver o resto.</div>`:'');
+}
+function vExtrato(){
   const f=[['todos','Todos'],['saida','Saídas'],['entrada','Entradas'],['pend','Pendentes'],['emp','Me devem']];
-  return `<div class="c"><div class="seg" style="flex-wrap:wrap">${f.map(([k,l])=>`<button data-fl="${k}" class="${filtro===k?'on':''}" style="flex:1 1 auto">${l}</button>`).join('')}</div></div>
-  <div class="c">${ls.length?ls.map(linhaLanc).join(''):'<div class="empty">Nenhum lançamento em '+lblMes(mes)+'.</div>'}</div>`;
+  return `<div class="c">
+    <input id="busca" placeholder="Buscar em todos os meses…" value="${esc(busca)}" autocomplete="off">
+    <div class="seg" style="flex-wrap:wrap;margin-top:10px">${f.map(([k,l])=>`<button data-fl="${k}" class="${filtro===k?'on':''}" style="flex:1 1 auto">${l}</button>`).join('')}</div></div>
+  <div class="c" id="lista">${listaExtrato()}</div>`;
 }
 
 /* ---- Cartões ---- */
@@ -1315,6 +1343,7 @@ function abrirLanc(id){
     <div class="sub">${dDia(l.data)} · ${R(l.valor)} · ${esc(nomeConta(l.contaId))}${l.parcs>1?` · parcela ${l.parc}/${l.parcs}`:''}</div>
     ${l.naoMeu>0?`<div class="hint">Gasto seu: <b>${R(meu(l))}</b> · <b>${esc(nomePessoa(l.devedorId))}</b> deve <b class="empc">${R(l.naoMeu)}</b></div>`:''}
     ${pod?`<button class="b" data-act="pago|${id}">${l.pago?(l.tipo==='saida'?'Desmarcar pago':'Desmarcar recebido'):(l.tipo==='saida'?'Marcar como pago':'Marcar como recebido')}</button>`:''}
+    ${['saida','entrada','transf'].includes(l.tipo)?`<button class="b gh" data-act="repetir|${id}">Lançar outro igual</button>`:''}
     <button class="b gh" data-act="editar-lanc|${id}">Editar</button>
     <button class="b dg" data-act="excluir|${id}">Excluir${l.parcs>1?' compra inteira':''}</button>
     <button class="b gh" data-act="fechar">Fechar</button></div></div>`;
@@ -1330,6 +1359,19 @@ function togglePago(id){
       save();fecharMdl();render();
     },'É uma conta fixa de valor estimado — o app guarda esse valor para o próximo mês.');
   }else{l.pago=true;save();fecharMdl();render()}
+}
+/* abre o formulário já preenchido com um lançamento parecido, só para trocar o valor.
+   Numa compra parcelada repete a compra inteira, não uma parcela solta. */
+function repetir(id){
+  const l=db.lanc.find(x=>x.id===id); if(!l)return;
+  const grupo=l.compraId?db.lanc.filter(x=>x.compraId===l.compraId):[l];
+  const total=grupo.reduce((s,x)=>s+x.valor,0);
+  const devido=grupo.reduce((s,x)=>s+(x.credTotal||0),0);
+  novo={...novoVazio(),tipo:l.tipo,data:hoje(),desc:l.desc,valor:fmt(total),
+    contaId:l.contaId,destId:l.destId||'',catId:l.catId||'',parcs:grupo.length,
+    devem:!!l.devedorId,devedorId:l.devedorId||'',devolve:devido?fmt(devido):''};
+  fecharMdl(); tab='lancar'; render();
+  toast(grupo.length>1?`Repetindo a compra em ${grupo.length}x — confira`:'Confira o valor e salve');
 }
 function editarLanc(id){
   const l=db.lanc.find(x=>x.id===id); if(!l)return;
@@ -1536,7 +1578,8 @@ document.addEventListener('click',e=>{
     if(l)l.textContent=d.info;
     return;
   }
-  if(d.tab){fecharMdl();tab=d.tab;render();return}
+  /* a busca não sobrevive à troca de tela: voltar ao extrato e ver outros meses confunde */
+  if(d.tab){fecharMdl();busca='';tab=d.tab;render();return}
   if(d.tp){novo.tipo=d.tp;novo.catId='';render();return}
   if(d.fl){filtro=d.fl;render();return}
   if(d.mes){mes=d.mes;tab='extrato';render();return}
@@ -1565,6 +1608,7 @@ document.addEventListener('click',e=>{
     case 'fora':if(e.target.classList.contains('mask'))fecharMdl();break;
     case 'mdl-ok':mdlSave&&mdlSave();break;
     case 'pago':togglePago(arg);break;
+    case 'repetir':repetir(arg);break;
     case 'editar-lanc':editarLanc(arg);break;
     case 'excluir':excluir(arg);break;
     case 'sel-emp':itensReceber(daEmpresa).forEach(l=>sel.add(l.id));render();break;
@@ -1584,6 +1628,12 @@ document.addEventListener('click',e=>{
   }
 });
 document.addEventListener('input',e=>{
+  /* troca só a lista: redesenhar a tela inteira tiraria o foco a cada letra */
+  if(e.target.id==='busca'){
+    busca=e.target.value;
+    const l=$('#lista'); if(l)l.innerHTML=listaExtrato();
+    return;
+  }
   const f=e.target.dataset.f;
   if(f)novo[f]=e.target.type==='checkbox'?e.target.checked:e.target.value;
 });
@@ -1771,6 +1821,36 @@ if(location.search.includes('teste')){
   ok(/R\$/.test(document.querySelector('.viz .lida').textContent),'tocar numa marca escreve o valor');
   mes='2019-01'; render();
   ok(document.querySelectorAll('.viz .c').length===4,'mês sem nenhum dado desenha sem quebrar');
+
+  /* parcelar fora do cartão: carnê e boleto não têm fatura, viram contas a vencer */
+  const saldoAntesCarne=saldo('B');
+  tab='lancar'; novo={...novoVazio(),contaId:'B',valor:'1.200,00',desc:'Carnê',catId:cm,parcs:6}; render();
+  clk('[data-act="salvar"]');
+  const carne=db.lanc.filter(l=>l.desc==='Carnê');
+  ok(carne.length===6,'seis parcelas fora do cartão');
+  ok(carne.reduce((s,l)=>s+l.valor,0)===120000,'as parcelas somam o total exato');
+  ok(carne.every(l=>!l.pago),'nascem pendentes, uma por mês');
+  ok(new Set(carne.map(l=>mesDe(l.data))).size===6,'uma em cada mês');
+  ok(saldo('B')===saldoAntesCarne,'nada sai do saldo até você pagar');
+
+  /* busca atravessa os meses; sem busca, só o mês do cabeçalho */
+  db.lanc.push({id:uid(),tipo:'saida',data:'2019-03-10',desc:'Café antigo',valor:2200,catId:cm,contaId:'B',pago:true});
+  mes='2026-01'; tab='extrato'; busca=''; render();
+  const soDoMes=document.querySelectorAll('#lista .row').length;
+  busca='cafe'; $('#lista').innerHTML=listaExtrato();
+  ok(/Café antigo/.test($('#lista').innerHTML),'busca sem acento acha "Café" de outro ano');
+  ok(/em todos os meses/.test($('#lista').innerHTML),'avisa que a busca saiu do mês');
+  busca='zzzz'; $('#lista').innerHTML=listaExtrato();
+  ok(/Nada encontrado/.test($('#lista').innerHTML),'diz quando não acha');
+  busca=''; render();
+  ok(document.querySelectorAll('#lista .row').length===soDoMes,'limpar a busca volta para o mês');
+
+  /* repetir traz a compra inteira, não uma parcela solta */
+  const g1=db.lanc.find(l=>l.desc==='Geladeira'&&l.parc===2);
+  repetir(g1.id);
+  ok(tab==='lancar'&&novo.desc==='Geladeira','abre o formulário preenchido');
+  ok(novo.valor===fmt(300000)&&novo.parcs===3,'repete o total e as 3 parcelas, não os 1.000 da parcela');
+  ok(novo.data===hoje(),'com a data de hoje');
 
   /* investimentos: aplicação é conta, aporte é transferência */
   db.contas.push({id:'I',nome:'CDB',tipo:'invest',subtipo:'CDB',saldoInicial:0,arq:false});
