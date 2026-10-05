@@ -1135,8 +1135,26 @@ function vConfig(){
   <button class="b" data-act="export">Exportar backup (.json)</button>
   <button class="b gh" data-act="import">Importar backup</button>
   <input type="file" id="fimp" accept=".json,application/json" style="display:none">
-  <div class="hint">Os dados ficam só no navegador deste aparelho. Limpar dados de navegação apaga tudo. Importar <b>substitui</b> tudo — não mescla. Use o celular como oficial e o PC só para consultar.</div>
-  <button class="b dg" data-act="zerar">Apagar tudo e recomeçar</button></div>`;
+  <div class="hint">Os dados ficam só no navegador deste aparelho. Limpar dados de navegação apaga tudo. Importar <b>substitui</b> tudo — não mescla.</div></div>
+
+  <div class="c"><h2>Google Drive</h2>
+  ${!driveServe()?`<div class="warn">⚠️ O Google só autoriza por endereço seguro. Abra o app por
+      <b>fabianofca26-creator.github.io/financeiro</b> — pelo arquivo baixado isto não funciona.</div>`:''}
+  ${db.driveId?`
+    <div class="sub">${db.sync?`Última sincronização: ${qdo(db.sync)}`:'Ainda não sincronizou neste aparelho.'}</div>
+    <button class="b" data-act="drive-salvar">Salvar no Drive</button>
+    <button class="b gh" data-act="drive-carregar">Carregar do Drive</button>
+    <div class="hint">O app enxerga só a pasta dele no seu Drive — nenhum outro arquivo seu.
+      Antes de substituir, ele compara as datas e avisa qual cópia é mais nova.</div>
+    <button class="b gh" data-act="drive-tirar">Remover o ID deste aparelho</button>`
+  :`<label>ID de cliente OAuth</label>
+    <input id="driveId" placeholder="000000-xxxx.apps.googleusercontent.com" value="">
+    <button class="b" data-act="drive-id">Guardar ID</button>
+    <div class="hint">Você cria esse ID uma vez no Google Cloud, de graça. Ele fica só neste
+      aparelho — não vai para o GitHub. Peça o passo a passo que eu te mando.</div>`}
+  </div>
+
+  <div class="c"><button class="b dg" data-act="zerar">Apagar tudo e recomeçar</button></div>`;
 }
 
 /* ============ modal genérico ============ */
@@ -1337,6 +1355,118 @@ function verFatura(cid,ref){
     <button class="b gh" data-act="fechar">Fechar</button></div></div>`;
 }
 
+/* ---- Google Drive ----
+   O ID de cliente NÃO vive no código: o usuário cola nos Ajustes e ele fica no
+   localStorage. Assim o repositório pode ser público sem carregar credencial.
+   Escopo appdata: pasta escondida exclusiva deste app — ele não enxerga nenhum
+   outro arquivo do Drive, mesmo autorizado.
+   O token de acesso fica só em memória, nunca é salvo. */
+const DRIVE_ESCOPO='https://www.googleapis.com/auth/drive.appdata';
+const DRIVE_ARQ='financeiro.json';
+let driveToken=null;
+const qdo=ms=>new Date(ms).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+/* o Google exige origem https (ou localhost); por arquivo local não funciona */
+const driveServe=()=>location.protocol==='https:'||location.hostname==='localhost';
+
+function carregarGIS(){
+  if(window.google&&google.accounts&&google.accounts.oauth2)return Promise.resolve();
+  return new Promise((ok,err)=>{
+    const s=document.createElement('script');
+    s.src='https://accounts.google.com/gsi/client';
+    s.onload=ok;
+    s.onerror=()=>err(new Error('sem internet para falar com o Google'));
+    document.head.appendChild(s);
+  });
+}
+async function driveAuth(){
+  if(!db.driveId)throw new Error('falta o ID de cliente nos Ajustes');
+  if(driveToken&&driveToken.exp>Date.now())return driveToken.t;
+  await carregarGIS();
+  return new Promise((ok,err)=>{
+    google.accounts.oauth2.initTokenClient({
+      client_id:db.driveId, scope:DRIVE_ESCOPO,
+      callback:r=>{
+        if(r.error)return err(new Error(r.error));
+        driveToken={t:r.access_token,exp:Date.now()+(r.expires_in-60)*1000};
+        ok(r.access_token);
+      },
+      error_callback:e=>err(new Error(e&&e.type==='popup_closed'?'você fechou a janela do Google':'autorização negada'))
+    }).requestAccessToken();
+  });
+}
+const driveHead=tk=>({Authorization:'Bearer '+tk});
+async function driveJson(r){
+  if(!r.ok)throw new Error('o Drive respondeu '+r.status);
+  return r.json();
+}
+async function driveArquivo(tk){
+  const q=encodeURIComponent("name='"+DRIVE_ARQ+"'");
+  const j=await driveJson(await fetch(
+    `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=${q}`,
+    {headers:driveHead(tk)}));
+  return (j.files&&j.files[0])||null;
+}
+const driveBaixar=async(tk,id)=>driveJson(await fetch(
+  `https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:driveHead(tk)}));
+async function driveSubir(tk,id,dados){
+  const corpo=new FormData();
+  corpo.append('metadata',new Blob([JSON.stringify(
+    id?{name:DRIVE_ARQ}:{name:DRIVE_ARQ,parents:['appDataFolder']})],{type:'application/json'}));
+  corpo.append('file',new Blob([JSON.stringify(dados)],{type:'application/json'}));
+  return driveJson(await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${id||''}?uploadType=multipart`,
+    {method:id?'PATCH':'POST',headers:driveHead(tk),body:corpo}));
+}
+const resumo=d=>`${d&&d.sync?qdo(d.sync):'sem data'} · ${(d&&d.lanc&&d.lanc.length)||0} lançamentos`;
+
+async function driveSalvar(){
+  try{
+    toast('Falando com o Drive…');
+    const tk=await driveAuth();
+    const f=await driveArquivo(tk);
+    if(f){
+      const remoto=await driveBaixar(tk,f.id).catch(()=>null);
+      /* só avisa quando sobrescrever pode custar caro: o Drive está na frente */
+      if(remoto&&remoto.sync&&(!db.sync||remoto.sync>db.sync)&&
+         !confirm(`A cópia do Drive é MAIS NOVA que a deste aparelho.\n\n`+
+                  `Drive: ${resumo(remoto)}\nAqui: ${resumo(db)}\n\n`+
+                  `Salvar vai substituir a do Drive. Continuar?`))return toast('Cancelado');
+    }
+    const carimbo=Date.now();
+    await driveSubir(tk,f&&f.id,{...db,sync:carimbo,backup:carimbo});
+    db.sync=carimbo; db.backup=carimbo; save();
+    toast('Salvo no Drive'); render();
+  }catch(e){toast('Não deu: '+e.message)}
+}
+async function driveCarregar(){
+  try{
+    toast('Falando com o Drive…');
+    const tk=await driveAuth();
+    const f=await driveArquivo(tk);
+    if(!f)return toast('Ainda não há backup no Drive');
+    const d=await driveBaixar(tk,f.id);
+    if(!d||!Array.isArray(d.contas))return toast('O arquivo do Drive não parece um backup deste app');
+    const velho=d.sync&&db.sync&&d.sync<db.sync;
+    if(!confirm(`${velho?'⚠️ A cópia do Drive é MAIS VELHA que a deste aparelho.\n\n':''}`+
+                `Isto APAGA os dados deste aparelho e põe os do Drive no lugar.\n\n`+
+                `Drive: ${resumo(d)}\nAqui: ${resumo(db)}\n\nContinuar?`))return toast('Cancelado');
+    const idLocal=db.driveId;
+    db=d;
+    for(const k of ['contas','cats','fixas','lanc','pessoas'])if(!Array.isArray(db[k]))db[k]=[];
+    if(!db.orc)db.orc={};
+    if(!db.driveId)db.driveId=idLocal;   /* não se tranca para fora da própria sincronização */
+    migrar(); save(); gerarFixas();
+    toast('Carregado do Drive'); tab='inicio'; mes=mesDe(hoje()); render();
+  }catch(e){toast('Não deu: '+e.message)}
+}
+function salvarDriveId(v){
+  const id=(v||'').trim();
+  if(id&&!/\.apps\.googleusercontent\.com$/.test(id))
+    return toast('O ID termina em .apps.googleusercontent.com');
+  db.driveId=id||null; driveToken=null; save(); render();
+  toast(id?'ID guardado neste aparelho':'ID removido');
+}
+
 /* ---- backup ---- */
 function exportar(){
   db.backup=Date.now(); save();
@@ -1409,6 +1539,10 @@ document.addEventListener('click',e=>{
     case 'sel-nada':sel.clear();render();break;
     case 'copiar':copiarLista();break;
     case 'reembolso':registrarReembolso();break;
+    case 'drive-id':salvarDriveId($('#driveId').value);break;
+    case 'drive-tirar':if(confirm('Remover o ID deste aparelho? Os dados ficam, só para de sincronizar.'))salvarDriveId('');break;
+    case 'drive-salvar':driveSalvar();break;
+    case 'drive-carregar':driveCarregar();break;
     case 'export':exportar();break;
     case 'import':$('#fimp').click();break;
     case 'zerar':
