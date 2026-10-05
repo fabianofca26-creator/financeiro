@@ -10,23 +10,23 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <!-- combina com o topo da faixa colorida, para a barra de status não destoar -->
-<meta name="theme-color" content="#1b348a" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#12193a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#06301f" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#06251a" media="(prefers-color-scheme: dark)">
 <title>Controle Financeiro</title>
 <style>
 :root{
   --bg:#f2f3f6; --card:#fff; --tx:#14171c; --mut:#71787f; --bd:#e6e8ec; --bd2:#eef0f3;
-  --ac:#2f6bff; --ok:#0f8a4d; --no:#d92d20; --wn:#b45309; --emp:#6d28d9;
+  --ac:#0f5f43; --acBtn:#0f5f43; --ok:#0f8a4d; --no:#d92d20; --wn:#b45309; --emp:#6d28d9;
   --wnbg:#fef4e2; --empbg:#f2edff;
   --sh:0 3px 14px rgba(16,24,40,.09); --cbd:transparent;
-  --topo:linear-gradient(150deg,#1b348a,#3355d8 55%,#4c6ef5);
+  --topo:linear-gradient(150deg,#06301f,#0f5f43 55%,#17855d);
 }
 @media(prefers-color-scheme:dark){:root{
   --bg:#0f1216; --card:#181c22; --tx:#eceef1; --mut:#8b939d; --bd:#252b33; --bd2:#20262d;
-  --ac:#6d9bff; --ok:#3ecf7f; --no:#ff6b60; --wn:#f5b544; --emp:#b18bff;
+  --ac:#4cc295; --acBtn:#1a7d59; --ok:#3ecf7f; --no:#ff6b60; --wn:#f5b544; --emp:#b18bff;
   --wnbg:#33270f; --empbg:#241d3a;
   --sh:none; --cbd:var(--bd);
-  --topo:linear-gradient(150deg,#12193a,#1c2a63 55%,#26377f);
+  --topo:linear-gradient(150deg,#06251a,#0c3d2c 55%,#114f38);
 }}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
@@ -62,8 +62,8 @@ header.curto{padding-bottom:40px}
 #bar button.on{color:var(--ac)}
 #bar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 /* sem rótulo embaixo, precisa centralizar sozinho — os outros botões são preenchidos pelo texto */
-#bar .add{background:var(--ac);color:#fff;max-width:48px;border-radius:15px;margin:-2px 3px 0;
- justify-content:center;padding:6px;box-shadow:0 4px 12px rgba(47,107,255,.35)}
+#bar .add{background:var(--acBtn);color:#fff;max-width:48px;border-radius:15px;margin:-2px 3px 0;
+ justify-content:center;padding:6px;box-shadow:0 4px 12px rgba(15,95,67,.4)}
 #bar .add svg{stroke-width:2.4}
 #bar .add:active{transform:scale(.94)}
 #bar .dot{position:absolute;top:4px;right:calc(50% - 16px);width:7px;height:7px;border-radius:50%;background:var(--emp)}
@@ -121,7 +121,7 @@ header.curto{padding-bottom:40px}
 .big strong{display:block;font-size:22px;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.7px}
 label{display:block;font-size:12px;color:var(--mut);font-weight:650;margin:12px 0 5px}
 input,select,textarea{width:100%;padding:12px;border:1px solid var(--bd);border-radius:11px;background:var(--bg);color:var(--tx);font:inherit;outline:none}
-input:focus,select:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(47,107,255,.15)}
+input:focus,select:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(15,95,67,.18)}
 input[type=checkbox]{width:auto;box-shadow:none}
 /* o valor é o campo mais importante do app: entra grande */
 input.money{font-size:26px;font-weight:700;letter-spacing:-.8px;padding:12px;font-variant-numeric:tabular-nums}
@@ -130,12 +130,12 @@ input.money{font-size:26px;font-weight:700;letter-spacing:-.8px;padding:12px;fon
 .seg button.on{background:var(--card);color:var(--tx);box-shadow:var(--sh),0 0 0 1px var(--bd)}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
 @media(max-width:520px){.g2{grid-template-columns:1fr}}
-button.b{width:100%;padding:14px;border:0;border-radius:12px;background:var(--ac);color:#fff;font:700 15px/1 inherit;cursor:pointer;margin-top:16px}
+button.b{width:100%;padding:14px;border:0;border-radius:12px;background:var(--acBtn);color:#fff;font:700 15px/1 inherit;cursor:pointer;margin-top:16px}
 button.b:active{transform:scale(.99)}
 button.b.gh{background:var(--bg);color:var(--tx);box-shadow:0 0 0 1px var(--bd)}
 button.b.dg{background:none;color:var(--no);box-shadow:0 0 0 1px var(--bd)}
 button.s{background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:9px;padding:8px 12px;font:650 12.5px/1 inherit;cursor:pointer}
-button.s.p{background:var(--ac);border-color:var(--ac);color:#fff}
+button.s.p{background:var(--acBtn);border-color:var(--acBtn);color:#fff}
 .chk{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px;font-weight:650}
 .chk input{width:20px;height:20px;accent-color:var(--ac)}
 .tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;text-transform:uppercase;letter-spacing:.4px;vertical-align:middle}
@@ -506,9 +506,9 @@ function vInicio(){
     <div><div class="t empc">Me devem</div><div class="sub">${devedores().map(d=>d.nome).join(', ')} — toque para ver</div></div>
     <div class="v empc" style="font-size:18px">${R(ar)}</div></div>`:''}
   ${inv>0?`<div class="strip" style="border-left-color:var(--ac)" data-tab="carteira">
-    <div><div class="t" style="color:var(--ac)">Investido</div>
+    <div><div class="t">Investido</div>
     <div class="sub">${rnd>=0?'rendeu':'perdeu'} ${R(Math.abs(rnd))} — toque para ver</div></div>
-    <div class="v" style="font-size:18px;color:var(--ac)">${R(inv)}</div></div>`:''}
+    <div class="v" style="font-size:18px">${R(inv)}</div></div>`:''}
   ${bkp}
   <div class="c"><h2>Vence nos próximos 7 dias</h2>
   ${(venc.length||fat.length)?
@@ -1042,7 +1042,7 @@ function cardPatrimonio(){
         <div class="v ${dis<0?'neg':''}">${R(dis)}</div></div>
       ${inv?`<div class="row clk" data-ir="inv"><div class="l"><div class="t">Aplicado</div>
         <div class="sub">${rnd>=0?'rendeu':'perdeu'} ${R(Math.abs(rnd))}</div></div>
-        <div class="v" style="color:var(--ac)">${R(inv)}</div></div>`:''}
+        <div class="v">${R(inv)}</div></div>`:''}
       ${ar?`<div class="row clk" data-ir="dev"><div class="l"><div class="t">Me devem</div>
         <div class="sub">${devedores().map(d=>d.nome).join(', ')}</div></div>
         <div class="v empc">${R(ar)}</div></div>`:''}
