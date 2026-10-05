@@ -1140,18 +1140,19 @@ function vConfig(){
   <div class="c"><h2>Google Drive</h2>
   ${!driveServe()?`<div class="warn">⚠️ O Google só autoriza por endereço seguro. Abra o app por
       <b>fabianofca26-creator.github.io/financeiro</b> — pelo arquivo baixado isto não funciona.</div>`:''}
+  <label>ID de cliente OAuth</label>
+  <input id="driveId" placeholder="000000-xxxx.apps.googleusercontent.com" value="${esc(db.driveId||'')}">
+  <button class="b ${db.driveId?'gh':''}" data-act="drive-id">${db.driveId?'Trocar ID':'Guardar ID'}</button>
   ${db.driveId?`
-    <div class="sub">${db.sync?`Última sincronização: ${qdo(db.sync)}`:'Ainda não sincronizou neste aparelho.'}</div>
+    <div class="hint">Confira caractere por caractere com o que está no Google Cloud.
+      “Erro 401: invalid_client” quer dizer que o Google não achou esse ID.</div>
+    <div class="sub" style="margin-top:14px">${db.sync?`Última sincronização: ${qdo(db.sync)}`:'Ainda não sincronizou neste aparelho.'}</div>
     <button class="b" data-act="drive-salvar">Salvar no Drive</button>
     <button class="b gh" data-act="drive-carregar">Carregar do Drive</button>
     <div class="hint">O app enxerga só a pasta dele no seu Drive — nenhum outro arquivo seu.
-      Antes de substituir, ele compara as datas e avisa qual cópia é mais nova.</div>
-    <button class="b gh" data-act="drive-tirar">Remover o ID deste aparelho</button>`
-  :`<label>ID de cliente OAuth</label>
-    <input id="driveId" placeholder="000000-xxxx.apps.googleusercontent.com" value="">
-    <button class="b" data-act="drive-id">Guardar ID</button>
-    <div class="hint">Você cria esse ID uma vez no Google Cloud, de graça. Ele fica só neste
-      aparelho — não vai para o GitHub. Peça o passo a passo que eu te mando.</div>`}
+      Antes de substituir, ele compara as datas e avisa qual cópia é mais nova.</div>`
+  :`<div class="hint">Você cria esse ID uma vez no Google Cloud, de graça. Ele fica só neste
+      aparelho — não vai para o GitHub.</div>`}
   </div>
 
   <div class="c"><button class="b dg" data-act="zerar">Apagar tudo e recomeçar</button></div>`;
@@ -1460,9 +1461,13 @@ async function driveCarregar(){
   }catch(e){toast('Não deu: '+e.message)}
 }
 function salvarDriveId(v){
-  const id=(v||'').trim();
+  /* o formato real é 000000000000-xxxxxxxx.apps.googleusercontent.com.
+     Colar pela metade é a causa mais comum do "401 invalid_client". */
+  const id=(v||'').trim().replace(/\s/g,'');
   if(id&&!/\.apps\.googleusercontent\.com$/.test(id))
     return toast('O ID termina em .apps.googleusercontent.com');
+  if(id&&!/^\d{6,}-[a-z0-9]{8,}\.apps\.googleusercontent\.com$/.test(id))
+    return toast('Parece incompleto: falta a parte antes do hífen ou depois dele');
   db.driveId=id||null; driveToken=null; save(); render();
   toast(id?'ID guardado neste aparelho':'ID removido');
 }
@@ -1540,7 +1545,6 @@ document.addEventListener('click',e=>{
     case 'copiar':copiarLista();break;
     case 'reembolso':registrarReembolso();break;
     case 'drive-id':salvarDriveId($('#driveId').value);break;
-    case 'drive-tirar':if(confirm('Remover o ID deste aparelho? Os dados ficam, só para de sincronizar.'))salvarDriveId('');break;
     case 'drive-salvar':driveSalvar();break;
     case 'drive-carregar':driveCarregar();break;
     case 'export':exportar();break;
