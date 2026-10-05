@@ -77,9 +77,15 @@ Digite a descrição e a categoria vem sozinha, copiada do seu lançamento parec
 
 Não há regra para cadastrar: ele só olha o que você já lançou, e melhora conforme você usa.
 
+### Ler o relatório por dentro
+
+Cada categoria da legenda mostra quanto variou contra o mês anterior — "Mercado −21%", "Transporte +37%", "Saúde novo" — e tocar nela abre os lançamentos que formam aquele valor, com data, conta e, num rateio, só a sua parte.
+
+Um seletor no topo recorta tudo por conta ou cartão, útil para bater o relatório com a fatura ou com o extrato do banco. Escolhendo um cartão, o gráfico de saldo diz que não se aplica em vez de desenhar um número sem sentido — cartão não tem saldo, tem fatura.
+
 ### Dar baixa em várias de uma vez
 
-No Extrato, o filtro **Pendentes** mostra cada conta com uma caixa de marcar. Você bate com o extrato do banco, marca o que já saiu e dá baixa nas quatro de uma vez — o botão mostra antes quanto isso tira do saldo. A baixa usa o valor lançado; se o real foi outro, edite o lançamento antes.
+O filtro **Pendentes** do Extrato ignora o mês do cabeçalho e mostra tudo que está em aberto, agrupado por urgência — Atrasados, Próximos 7 dias, Ainda este mês, Mais adiante — com o total de cada faixa. Uma conta atrasada do mês passado é justamente a que não pode sumir da tela. Cada linha tem uma caixa de marcar. Você bate com o extrato do banco, marca o que já saiu e dá baixa nas quatro de uma vez — o botão mostra antes quanto isso tira do saldo. A baixa usa o valor lançado; se o real foi outro, edite o lançamento antes.
 
 ### Conferir a fatura item por item
 
