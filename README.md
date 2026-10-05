@@ -24,6 +24,8 @@ Uma barra fixa embaixo com **todos** os destinos — nada escondido atrás de me
 
 **Gráficos** · **Metas** · **Início** · **+** (lançar) · **Extrato** · **Cartões** · **Carteira**, mais a engrenagem dos ajustes no cabeçalho.
 
+No computador, a partir de 900px de largura, essa barra vira uma **coluna fixa à esquerda**, com os nomes por extenso e o botão de lançar no topo.
+
 Na barra os dois primeiros usam rótulo curto para caber em tela de celular; as telas se chamam **Relatório** e **Orçamento**.
 
 **Carteira** responde "dinheiro meu que não está na conta": patrimônio no topo, depois os investimentos e quem te deve.

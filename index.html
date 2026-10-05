@@ -52,7 +52,9 @@ header.curto{padding-bottom:40px}
 #bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;gap:1px;
  background:var(--card);border-top:1px solid var(--bd);
  padding:7px 6px calc(9px + env(safe-area-inset-bottom))}
-@media(min-width:640px){#bar{max-width:440px;margin:0 auto;bottom:18px;border:1px solid var(--bd);border-radius:20px;box-shadow:0 10px 34px rgba(16,24,40,.16)}}
+/* tablet: ilha flutuante. A partir de 900px há espaço para a coluna lateral. */
+@media(min-width:640px) and (max-width:899px){#bar{max-width:440px;margin:0 auto;bottom:18px;border:1px solid var(--bd);border-radius:20px;box-shadow:0 10px 34px rgba(16,24,40,.16)}}
+#bar .longo{display:none}
 /* min-width:0 senão o rótulo mais longo dita a largura e os ícones desalinham */
 #bar button{flex:1 1 0;min-width:0;max-width:92px;background:none;border:0;color:var(--mut);cursor:pointer;border-radius:12px;
  display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;font:650 9px/1 inherit;letter-spacing:-.1px;position:relative}
@@ -65,6 +67,27 @@ header.curto{padding-bottom:40px}
 #bar .add svg{stroke-width:2.4}
 #bar .add:active{transform:scale(.94)}
 #bar .dot{position:absolute;top:4px;right:calc(50% - 16px);width:7px;height:7px;border-radius:50%;background:var(--emp)}
+
+/* ---- PC: a barra vira coluna à esquerda ----
+   Numa tela grande a barra no rodapé desperdiça a largura e deixa o olho longe
+   do conteúdo. Aqui cabe o nome por extenso, sem os rótulos curtos do celular. */
+@media(min-width:900px){
+  body{padding-left:216px}
+  #bar{top:0;bottom:0;right:auto;width:216px;max-width:none;margin:0;border-radius:0;box-shadow:none;
+   flex-direction:column;justify-content:flex-start;align-items:stretch;gap:2px;
+   border-top:0;border-right:1px solid var(--bd);padding:16px 12px;overflow-y:auto}
+  #bar button{flex:0 0 auto;width:100%;max-width:none;flex-direction:row;justify-content:flex-start;
+   gap:13px;padding:11px 12px;font-size:13.5px;letter-spacing:0}
+  #bar button.on{background:var(--bg)}
+  #bar button span{max-width:none;overflow:visible}
+  #bar .curto{display:none}
+  #bar .longo{display:inline}
+  #bar .add{order:-1;max-width:none;margin:0 0 12px;border-radius:12px;padding:12px;
+   flex-direction:row;justify-content:center;gap:9px;font-size:14px}
+  #bar .add::after{content:'Lançar';font-weight:700}
+  #bar .dot{top:50%;right:14px;transform:translateY(-50%)}
+  .wrap{padding-bottom:48px}
+}
 
 .c{background:var(--card);border:1px solid var(--cbd);border-radius:16px;padding:14px 16px;margin-top:12px;box-shadow:var(--sh)}
 .c>h2{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--mut);margin:0 0 8px;font-weight:700}
@@ -436,7 +459,11 @@ function render(){
   const ar=aReceber();
   $('#bar').innerHTML=BARRA.map(k=>{
     if(k==='lancar')return `<button class="add" data-tab="lancar" aria-label="Lançar">${svg('lancar')}</button>`;
-    return `<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}<span>${rotulo(k)}</span>${k==='carteira'&&ar>0?'<i class="dot"></i>':''}</button>`;
+    /* os dois rótulos sempre vão: o CSS mostra o curto na barra de baixo e o
+       nome por extenso na coluna lateral, onde sobra largura */
+    return `<button data-tab="${k}" class="${tab===k?'on':''}">${svg(k)}`
+      +`<span class="curto">${rotulo(k)}</span><span class="longo">${TITULO[k]}</span>`
+      +`${k==='carteira'&&ar>0?'<i class="dot"></i>':''}</button>`;
   }).join('');
   $('#view').innerHTML=VIEWS[tab]();
   window.scrollTo(0,0);
@@ -1687,8 +1714,10 @@ if(location.search.includes('teste')){
   ok(document.querySelectorAll('#bar button').length===7,'os 7 destinos cabem na barra');
   ok(Object.keys(VIEWS).every(k=>k==='lancar'||k==='config'||BARRA.includes(k)),
      'toda tela está na barra, exceto Lançar (é o +) e Ajustes (é a engrenagem)');
-  ok([...document.querySelectorAll('#bar span')].every(s=>s.scrollWidth<=s.clientWidth+0.5),
+  ok([...document.querySelectorAll('#bar .curto')].every(s=>s.scrollWidth<=s.clientWidth+0.5),
      'nenhum rótulo da barra sai cortado com reticências');
+  ok([...document.querySelectorAll('#bar button:not(.add)')].every(b=>b.querySelector('.curto')&&b.querySelector('.longo')),
+     'cada botão leva os dois rótulos: o curto da barra de baixo e o longo da coluna do PC');
   ok(TITULO.relatorio==='Relatório'&&TITULO.orcamento==='Orçamento',
      'o rótulo curto é só da barra: o título da tela continua por extenso');
   clk('#bar [data-tab="relatorio"]'); ok(tab==='relatorio','barra navega direto');
