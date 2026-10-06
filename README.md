@@ -123,6 +123,20 @@ Compra parcelada lança o crédito **cheio no mês da compra**, porque quem deve
 
 As pessoas são cadastradas em **Ajustes › Pessoas que me devem**. A marcada como "empresa" é a que ganha a seção separada.
 
+### Quando esse dinheiro volta
+
+Cada pessoa pode ter um **dia de pagamento** — "a empresa paga dia 5 do mês seguinte", "meu irmão me paga dia 20 do mesmo mês". A partir daí o app calcula sozinho a previsão de cada lançamento; você não digita data nenhuma no dia a dia. Sem dia cadastrado não há previsão: é melhor nenhum número do que um inventado.
+
+A previsão aparece em três lugares:
+
+- na linha de cada item, como `previsto 05/11` ou `atrasado 12 dias`;
+- numa agenda em **Me devem**, somada por data, com o que ainda não tem dia separado em "Sem data";
+- no **saldo previsto** do cabeçalho e no gráfico de saldo.
+
+O que entra no saldo previsto é só o que **ainda não venceu**. Reembolso atrasado fica de fora: prazo vencido não é dinheiro no bolso, e somá-lo seria mentir para si mesmo sobre quanto você tem. Por isso o cabeçalho diz quanto do previsto é reembolso — o número não sobe do nada.
+
+Repare no efeito de calendário: comprando para a empresa em outubro com pagamento dia 5 de novembro, o fechamento de **outubro** não conta esse dinheiro, porque ele chega em novembro. O que entra no fim de outubro é o reembolso das compras de setembro.
+
 ### O Relatório
 
 Quatro gráficos, desenhados em SVG puro — o app não carrega biblioteca nenhuma:

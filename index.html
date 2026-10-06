@@ -400,13 +400,33 @@ function previsto(ym){
     const ab=faturaAberto(c.id,ref);
     if(ab>0&&faturaVenc(c,ref)<=fim)s-=ab;
   }
-  return s;
+  return s+receberAte(fim);
 }
 /* o que ainda não voltou. `cred` é o que falta receber, `credTotal` o combinado */
 const aReceber=(filtro)=>itensReceber(filtro).reduce((s,l)=>s+l.cred,0);
 const itensReceber=(filtro)=>db.lanc.filter(l=>(l.cred||0)>0&&(!filtro||filtro(l)))
                                     .sort((a,b)=>a.data<b.data?-1:1);
 const daEmpresa=l=>ehEmpresa(l.devedorId);
+
+/* ---- previsão de reembolso ----
+   quem te deve pode ter um rito: "a empresa paga dia 5 do mês seguinte". A previsão
+   sai desse rito, não de uma data digitada em cada compra. Sem rito não há previsão:
+   melhor nenhum número do que um inventado. */
+const diaNoMes=(ym,dia)=>{const[y,m]=ym.split('-').map(Number);return `${ym}-${p2(Math.min(dia,ultDia(y,m)))}`};
+function previsaoReceb(l){
+  const p=pessoa(l.devedorId);
+  if(!p||!p.diaPaga)return '';
+  const n=p.mesPaga==='mesmo'?0:1;
+  const d=diaNoMes(addMes(mesDe(l.data),n),p.diaPaga);
+  /* compra do dia 12 com pagamento "dia 5 do mesmo mês" só cai no mês que vem */
+  return d<l.data?diaNoMes(addMes(mesDe(l.data),n+1),p.diaPaga):d;
+}
+/* reembolso esperado até a data d. Atrasado não entra: prazo vencido não é
+   dinheiro no bolso, e somar isso ao saldo previsto seria mentir para si mesmo. */
+function receberAte(d){
+  const h=hoje();
+  return itensReceber().reduce((s,l)=>{const p=previsaoReceb(l);return s+(p&&p>h&&p<=d?l.cred:0)},0);
+}
 /* devedores com saldo em aberto, empresa primeiro */
 function devedores(){
   const mp=new Map();
@@ -535,9 +555,14 @@ function seletorMes(){
 /* saldo dentro da faixa colorida do cabeçalho */
 function hero(){
   const sa=saldoTotal(), pv=previsto(mes);
+  const[y,m]=mes.split('-').map(Number);
+  /* o previsto conta reembolso que ainda vai vencer; dizer quanto evita o
+     número subir do nada e o dono achar que tem mais dinheiro do que tem */
+  const rb=receberAte(`${mes}-${p2(ultDia(y,m))}`);
   return `<div class="hero"><small>Saldo atual</small>
     <div class="num">${R(sa)}</div>
-    <div class="hsub">Previsto para o fim de ${lblMes(mes)}: <b>${R(pv)}</b></div></div>`;
+    <div class="hsub">Previsto para o fim de ${lblMes(mes)}: <b>${R(pv)}</b></div>
+    ${rb?`<div class="hsub">inclui <b>${R(rb)}</b> de reembolso previsto</div>`:''}</div>`;
 }
 
 /* ---- Início ---- */
@@ -876,9 +901,14 @@ let sel=new Set();
 function linhaDeve(l,h){
   const atraso=diasEntre(l.data,h);
   const parcial=l.cred<l.credTotal;
+  const pr=previsaoReceb(l);
+  /* sem rito cadastrado não há previsão: sobra o aviso antigo, por tempo de espera */
+  const prazo=pr
+    ? (pr<h?` · <span class="wnc">atrasado ${diasEntre(pr,h)} dia(s)</span>`:` · previsto ${dDia(pr)}`)
+    : (atraso>60?` · <span class="wnc">aguardando ${atraso} dias</span>`:'');
   return `<div class="it"><input type="checkbox" data-sel="${l.id}" ${sel.has(l.id)?'checked':''}>
     <div class="l" style="flex:1;min-width:0"><div class="t">${esc(l.desc)}</div>
-    <div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))}${parcial?` · recebido ${R(l.credTotal-l.cred)} de ${R(l.credTotal)}`:''}${atraso>60?` · <span class="wnc">aguardando ${atraso} dias</span>`:''}</div></div>
+    <div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))}${parcial?` · recebido ${R(l.credTotal-l.cred)} de ${R(l.credTotal)}`:''}${prazo}</div></div>
     <div class="v empc">${R(l.cred)}</div>
     <button class="s" data-desistir="${l.id}" title="Virar gasto meu">✕</button></div>`;
 }
@@ -887,6 +917,24 @@ function vReceber(){
   const emp=itensReceber(daEmpresa);
   const pess=devedores().filter(d=>!d.empresa);
   const recs=db.lanc.filter(l=>l.tipo==='reemb').sort((a,b)=>a.data<b.data?1:-1).slice(0,12);
+
+  /* quando esse dinheiro deve voltar, somado por data de previsão */
+  const porData=new Map();
+  for(const l of itensReceber()){const p=previsaoReceb(l);if(p)porData.set(p,(porData.get(p)||0)+l.cred)}
+  const agenda=[...porData].sort((a,b)=>a[0]<b[0]?-1:1);
+  const semPrev=itensReceber().filter(l=>!previsaoReceb(l)).reduce((t,l)=>t+l.cred,0);
+  const secAgenda=agenda.length?`<div class="c"><h2>Previsão de recebimento</h2>
+    ${agenda.map(([d,v])=>`<div class="row"><div class="l">
+      <div class="t">${dDia(d)}${d<h?' <span class="tag p">atrasado</span>':''}</div>
+      <div class="sub">${d<h?`${diasEntre(d,h)} dia(s) de atraso`
+        :(diasEntre(h,d)===0?'hoje':`em ${diasEntre(h,d)} dia(s)`)}</div></div>
+      <div class="v empc">${R(v)}</div></div>`).join('')}
+    ${semPrev?`<div class="row"><div class="l"><div class="t">Sem data</div>
+      <div class="sub">quem deve não tem dia certo cadastrado</div></div>
+      <div class="v empc">${R(semPrev)}</div></div>`:''}
+    <div class="hint">Vem do dia que você cadastrou em cada pessoa, em Ajustes › Pessoas. O que ainda não venceu já entra no saldo previsto; atrasado e sem data, não.</div></div>`
+    :`<div class="c"><div class="empty">Nenhuma previsão de recebimento.<br>
+      <span style="font-size:12px">Cadastre o dia de pagamento da pessoa em Ajustes › Pessoas e o app calcula sozinho.</span></div></div>`;
 
   /* empresa costuma ter rito próprio: lista pra conferência e prazo */
   const secEmpresa=emp.length?`<div class="c"><h2>Empresa</h2>
@@ -914,7 +962,7 @@ function vReceber(){
     <button class="b gh" data-act="sel-nada">Limpar seleção</button>
     <div class="hint">Marque os itens que entraram no pagamento e registre. O ✕ tira o item da lista e vira gasto seu, para quando você desistir de cobrar.</div>
   </div>
-  ${secEmpresa}${secPessoas}
+  ${secAgenda}${secEmpresa}${secPessoas}
   ${recs.length?`<div class="c"><h2>Recebimentos</h2>${recs.map(l=>`<div class="row"><div class="l"><div class="t">${esc(l.desc)}</div><div class="sub">${dDia(l.data)} · ${esc(nomeConta(l.contaId))} · ${(l.itens||[]).length} item(ns)</div></div><div class="v empc">+${R(l.valor)}</div></div>`).join('')}</div>`:''}`;
 }
 
@@ -1014,6 +1062,7 @@ function saldoDia(d){
     if(l.tipo!=='transf'||l.data>d)continue;
     if(isInvest(l.contaId)&&!isInvest(l.destId))s+=l.valor;
   }
+  if(futuro)s+=receberAte(d);
   if(futuro)for(const c of cartoes())for(const ref of refsCartao(c.id)){
     const ab=faturaAberto(c.id,ref), v=faturaVenc(c,ref);
     if(ab>0&&v<=d&&v>h)s-=ab;
@@ -1590,13 +1639,19 @@ function editar(tipo,id){
     formModal(p?'Editar pessoa':'Nova pessoa',[
       {k:'nome',label:'Nome',v:p?.nome,ph:'Ex: João, Irmão, Empresa'},
       {k:'empresa',label:'É a empresa (seção separada)',type:'check',v:p?.empresa},
+      {k:'diaPaga',label:'Costuma pagar no dia (deixe vazio se não tem dia certo)',type:'num',min:1,max:31,v:p?.diaPaga||'',ph:'Ex: 5'},
+      {k:'mesPaga',label:'De qual mês',type:'select',v:p?.mesPaga||'seguinte',
+        opts:[{id:'seguinte',nome:'Mês seguinte ao da compra'},{id:'mesmo',nome:'Mesmo mês da compra'}]},
       ...(p?[{k:'arq',label:'Arquivada',type:'check',v:p.arq}]:[])
     ],d=>{
       if(!d.nome.trim())return toast('Dê um nome');
-      if(p)Object.assign(p,{nome:d.nome,empresa:!!d.empresa,arq:!!d.arq});
-      else db.pessoas.push({id:uid(),nome:d.nome,empresa:!!d.empresa,arq:false});
+      const dia=Math.round(Number(d.diaPaga)||0);
+      if(d.diaPaga!==''&&(dia<1||dia>31))return toast('O dia tem de ser de 1 a 31');
+      const rito={diaPaga:dia||undefined,mesPaga:dia?d.mesPaga:undefined};
+      if(p)Object.assign(p,{nome:d.nome,empresa:!!d.empresa,arq:!!d.arq},rito);
+      else db.pessoas.push({id:uid(),nome:d.nome,empresa:!!d.empresa,arq:false,...rito});
       save();fecharMdl();render();
-    },'',p?`<button class="b dg" data-act="excluir-cad|pessoa|${p.id}">Excluir</button>`:'');
+    },'Com um dia certo, o app calcula sozinho quando cada reembolso deve cair e passa a contar isso no saldo previsto.',p?`<button class="b dg" data-act="excluir-cad|pessoa|${p.id}">Excluir</button>`:'');
   }
   if(tipo==='cat'){
     const c=id?cat(id):null;
@@ -2151,9 +2206,16 @@ if(location.search.includes('teste')){
 
   /* rateio pela tela, que é o caminho que o usuário percorre de verdade */
   tab='config'; render();
-  clk(achaEd('pessoa|')); campo('#mf_nome','Irmão'); clk('[data-act="mdl-ok"]');
+  clk(achaEd('pessoa|')); campo('#mf_nome','Irmão'); campo('#mf_diaPaga','20');
+  campo('#mf_mesPaga','mesmo'); clk('[data-act="mdl-ok"]');
   const irmao=db.pessoas.find(p=>p.nome==='Irmão');
   ok(!!irmao&&!irmao.empresa,'cadastra pessoa sem marcá-la como empresa');
+  ok(irmao.diaPaga===20&&irmao.mesPaga==='mesmo','o dia de pagamento chega pela tela');
+  clk(achaEd('pessoa|'+irmao.id)); campo('#mf_diaPaga',''); clk('[data-act="mdl-ok"]');
+  ok(!irmao.diaPaga,'apagar o dia tira a previsão de volta');
+  clk(achaEd('pessoa|'+irmao.id)); campo('#mf_diaPaga','99'); clk('[data-act="mdl-ok"]');
+  ok(!irmao.diaPaga&&!!document.querySelector('.mdl'),'dia inválido não grava e mantém o modal aberto');
+  clk('.mdl [data-act="fechar"]');
   tab='lancar'; novo={...novoVazio(),contaId:'B'}; render();
   novo.valor='120,00'; novo.desc='Lanche';
   const cx=document.querySelector('[data-f="devem"]');
@@ -2408,6 +2470,48 @@ if(location.search.includes('teste')){
   ok(det.map(r=>parseMoney(r.querySelector('.v').textContent)).reduce((a,b)=>a+b,0)===saldoTotal(),
      'as contas somam exatamente o "Em conta"');
   ok(!document.querySelector('.det .row .v').textContent.includes('undefined'),'cada linha traz o saldo');
+
+  /* previsão de reembolso: vem do rito da pessoa, não de data digitada por compra */
+  const EMP2=db.pessoas.find(p=>p.empresa);
+  EMP2.diaPaga=5; EMP2.mesPaga='seguinte';
+  const umaCompra={id:uid(),tipo:'saida',data:'2026-01-20',desc:'Material',valor:90000,
+    contaId:'B',catId:cm,pago:true,devedorId:EMP2.id,naoMeu:90000,cred:90000,credTotal:90000};
+  db.lanc.push(umaCompra);
+  ok(previsaoReceb(umaCompra)==='2026-02-05','compra de janeiro cai no dia 5 de fevereiro');
+  EMP2.mesPaga='mesmo';
+  ok(previsaoReceb(umaCompra)==='2026-02-05','"mesmo mês" com o dia já passado empurra para o mês seguinte');
+  umaCompra.data='2026-01-02';
+  ok(previsaoReceb(umaCompra)==='2026-01-05','"mesmo mês" com o dia ainda por vir fica no mês');
+  EMP2.diaPaga=31; EMP2.mesPaga='seguinte'; umaCompra.data='2026-01-10';
+  ok(previsaoReceb(umaCompra)==='2026-02-28','dia 31 vira o último dia de um mês curto');
+  delete EMP2.diaPaga;
+  ok(previsaoReceb(umaCompra)==='','sem dia cadastrado não inventa previsão');
+
+  /* o que ainda não venceu entra no previsto; atrasado não */
+  EMP2.diaPaga=5; EMP2.mesPaga='seguinte';
+  umaCompra.data=hoje();
+  const venceDepois=previsaoReceb(umaCompra);
+  ok(venceDepois>hoje(),'a previsão de uma compra de hoje está no futuro');
+  ok(receberAte(venceDepois)===90000,'reembolso a vencer entra no saldo previsto');
+  ok(receberAte(hoje())===0,'e não entra antes da data prevista');
+  const antesDoAtraso=receberAte('2099-12-31');
+  umaCompra.data='2020-01-10';
+  ok(receberAte('2099-12-31')===antesDoAtraso-90000,'reembolso atrasado sai do previsto: prazo vencido não é dinheiro no bolso');
+  umaCompra.data=hoje();
+  /* cabeçalho e gráfico têm de contar a mesma coisa */
+  /* isolar o efeito: ligar e desligar o rito, tudo o mais igual.
+     comparar com saldoDia(hoje) não serviria — no meio entram contas a vencer */
+  const fimLonge=addMesData(hoje(),2).slice(0,7)+'-28';
+  const ymL=fimLonge.slice(0,7), fimReal=`${ymL}-${p2(ultDia(+ymL.slice(0,4),+ymL.slice(5,7)))}`;
+  const esperado=receberAte(fimLonge), comRito=saldoDia(fimLonge);
+  const espMes=receberAte(fimReal), pvCom=previsto(ymL);
+  delete EMP2.diaPaga;
+  ok(esperado>0&&comRito-saldoDia(fimLonge)===esperado,'saldoDia soma exatamente o reembolso previsto');
+  /* previsto() e saldoDia() nunca deram o mesmo número (regras diferentes de propósito),
+     mas o pedaço do reembolso tem de ser o mesmo nos dois — é a mesma fonte */
+  ok(espMes>0&&pvCom-previsto(ymL)===espMes,'o cabeçalho conta a mesma previsão de reembolso que o gráfico');
+  EMP2.diaPaga=5;
+  umaCompra.cred=0;
 
   if(real)localStorage.setItem(K,real); else localStorage.removeItem(K);
   load(); tab='inicio'; mes=mesDe(hoje()); novo.parcs=1; render();
