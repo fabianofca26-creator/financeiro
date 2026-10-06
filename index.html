@@ -1776,12 +1776,30 @@ function repetir(id){
   fecharMdl(); tab='lancar'; render();
   toast(grupo.length>1?`Repetindo a compra em ${grupo.length}x — confira`:'Confira o valor e salve');
 }
+/* trocar a conta depois de lançado. Tudo o que depende da conta (fatura, saldo,
+   comprometido) é calculado na hora, então mover um lançamento se resolve sozinho —
+   menos num ponto: fatura já paga. Tirar ou pôr item nela deixaria o pagamento maior
+   que o total, e o cartão passaria a dever um valor negativo. Travado nos dois lados. */
+function travaFatura(pares){
+  for(const [cid,data] of pares){
+    if(!isCartao(cid))continue;
+    const ref=faturaRef(conta(cid),data);
+    if(faturaPago(cid,ref)>0)
+      return `A fatura de ${conta(cid).nome} de ${lblMes(ref)} já foi paga — desfaça o pagamento antes de mexer neste lançamento.`;
+  }
+  return '';
+}
 function editarLanc(id){
   const l=db.lanc.find(x=>x.id===id); if(!l)return;
+  const grupo=l.compraId?db.lanc.filter(x=>x.compraId===l.compraId):[l];
+  /* transferência tem duas contas; fatura e reembolso só caem em conta de verdade */
+  const trocaConta=l.tipo!=='transf';
+  const opcs=trocaConta?contasAtivas(l.tipo==='saida'||l.tipo==='entrada'):[];
   formModal('Editar lançamento',[
     {k:'desc',label:'Descrição',v:l.desc},
     {k:'valor',label:'Valor',type:'money',v:fmt(l.valor)},
     {k:'data',label:'Data',type:'date',v:l.data},
+    ...(trocaConta?[{k:'contaId',label:l.tipo==='fatura'?'Pago com':'Conta',type:'select',opts:opcs,v:l.contaId}]:[]),
     ...(l.tipo==='transf'||l.tipo==='fatura'||l.tipo==='reemb'?[]:
       [{k:'catId',label:'Categoria',type:'select',opts:db.cats.filter(c=>!c.arq&&c.tipo===l.tipo),v:l.catId}]),
     ...(l.naoMeu>0&&!l.parcs?[{k:'naoMeu',label:`Quanto ${nomePessoa(l.devedorId)} te deve`,type:'money',v:fmt(l.naoMeu)}]:[])
@@ -1793,10 +1811,30 @@ function editarLanc(id){
       l.naoMeu=nm; l.cred=nm; l.credTotal=nm;
       if(!nm)l.devedorId=null;
     }
+    const trocou=d.contaId!==undefined&&d.contaId!==l.contaId;
+    const mudouData=d.data!==l.data;
+    if(trocou||mudouData){
+      const dest=trocou?d.contaId:l.contaId, pares=[];
+      /* trocar de conta move a compra inteira; mudar a data move só esta parcela */
+      if(trocou)for(const x of grupo)pares.push([x.contaId,x.data],[dest,x.data]);
+      if(mudouData)pares.push([l.contaId,l.data],[dest,d.data]);
+      const erro=travaFatura(pares);
+      if(erro)return toast(erro);
+    }
+    if(trocou){
+      /* metade no cartão e metade no banco não é uma compra parcelada, é duas compras */
+      for(const x of grupo){
+        x.contaId=d.contaId;
+        /* no cartão o dinheiro ainda não saiu da conta: nunca fica pendente */
+        if(isCartao(d.contaId))x.pago=true;
+      }
+    }
     Object.assign(l,{desc:d.desc||l.desc,valor:v,data:d.data});
     if(d.catId!==undefined)l.catId=d.catId;
     save();fecharMdl();render();
-  },l.parcs>1?'Editar uma parcela não mexe nas outras nem no valor devido.':'');
+  },[l.parcs>1?'Editar uma parcela não mexe nas outras nem no valor devido — só a troca de conta vale para a compra inteira.':'',
+     trocaConta&&isCartao(l.contaId)?'Tirando do cartão, ele continua marcado como pago. Se ainda não pagou, use “Desmarcar pago” depois.':''
+    ].filter(Boolean).join(' '));
 }
 function excluir(id){
   const l=db.lanc.find(x=>x.id===id); if(!l)return;
@@ -2600,6 +2638,50 @@ if(location.search.includes('teste')){
   ok(espMes>0&&pvCom-previsto(ymL)===espMes,'o cabeçalho conta a mesma previsão de reembolso que o gráfico');
   EMP2.diaPaga=5;
   umaCompra.cred=0;
+
+  /* trocar a conta de um lançamento depois de lançado */
+  db=novoDb();
+  db.contas.push({id:'B',nome:'Banco',tipo:'banco',saldoInicial:500000,arq:false},
+    {id:'B2',nome:'Carteira',tipo:'dinheiro',saldoInicial:0,arq:false},
+    {id:'C',nome:'Visa',tipo:'cartao',fechamento:28,vencimento:5,pagaId:'B',limite:1000000,arq:false,saldoInicial:0});
+  const cmE=db.cats.find(x=>x.nome==='Mercado').id;
+  const lancE=(o)=>{novo={tipo:'saida',catId:cmE,parcs:1,devem:false,devedorId:'',devolve:'',pago:true,desc:'x',destId:'',...o};salvar()};
+  tab='lancar';
+  lancE({data:'2026-05-10',desc:'Mercado',valor:'200,00',contaId:'B'});
+  const gastoE=db.lanc.find(x=>x.desc==='Mercado');
+  const saldoAntesE=saldo('B');
+  editarLanc(gastoE.id);
+  ok(!!document.querySelector('#mf_contaId'),'o editar agora traz a conta');
+  campo('#mf_contaId','B2'); clk('[data-act="mdl-ok"]');
+  ok(gastoE.contaId==='B2'&&saldo('B')===saldoAntesE+20000&&saldo('B2')===-20000,
+     'trocar a conta devolve o dinheiro para uma e tira da outra');
+
+  /* banco -> cartão: sai do saldo e entra na fatura */
+  editarLanc(gastoE.id); campo('#mf_contaId','C'); clk('[data-act="mdl-ok"]');
+  ok(gastoE.pago===true&&saldo('B2')===0,'no cartão não sai da conta, e nunca fica pendente');
+  ok(faturaTotal('C',faturaRef(conta('C'),gastoE.data))===20000,'e entra na fatura do mês certo');
+
+  /* parcelada: a compra inteira muda junto */
+  lancE({data:'2026-06-10',desc:'Geladeira',valor:'900,00',contaId:'C',parcs:3});
+  const gel=db.lanc.filter(x=>x.desc==='Geladeira');
+  ok(gel.length===3&&gel.every(x=>x.contaId==='C'),'três parcelas no cartão');
+  editarLanc(gel[0].id); campo('#mf_contaId','B'); clk('[data-act="mdl-ok"]');
+  ok(gel.every(x=>x.contaId==='B'),'trocar a conta de uma parcela leva a compra inteira');
+
+  /* fatura paga tranca os dois lados */
+  lancE({data:'2026-07-10',desc:'Posto',valor:'150,00',contaId:'C'});
+  const posto=db.lanc.find(x=>x.desc==='Posto'), refP=faturaRef(conta('C'),posto.data);
+  db.lanc.push({id:uid(),tipo:'fatura',data:'2026-08-05',desc:'f',valor:faturaAberto('C',refP),
+    contaId:'B',destId:'C',faturaRef:refP,pago:true});
+  ok(faturaAberto('C',refP)===0,'fatura quitada');
+  editarLanc(posto.id); campo('#mf_contaId','B'); clk('[data-act="mdl-ok"]');
+  ok(posto.contaId==='C'&&!!document.querySelector('.mdl'),'não deixa tirar item de fatura já paga');
+  clk('.mdl [data-act="fechar"]');
+  ok(faturaAberto('C',refP)===0,'e a fatura paga continua fechando em zero');
+  /* mudar a data também mudaria de fatura: mesma trava */
+  editarLanc(posto.id); campo('#mf_data','2026-09-10'); clk('[data-act="mdl-ok"]');
+  ok(posto.data==='2026-07-10','mudar a data de item em fatura paga também é recusado');
+  clk('.mdl [data-act="fechar"]');
 
   if(real)localStorage.setItem(K,real); else localStorage.removeItem(K);
   load(); tab='inicio'; mes=mesDe(hoje()); novo.parcs=1; render();

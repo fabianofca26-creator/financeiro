@@ -63,6 +63,18 @@ Carnê de loja, boleto parcelado, financiamento: escolha a conta, informe o tota
 
 O topo da lista sempre diz quantos lançamentos estão na tela e quanto somam em saídas. A busca atravessa **todos os meses**, não só o que está no cabeçalho. Ela ignora acentos e maiúsculas, e procura também no nome da conta, da categoria e de quem te deve. O cabeçalho do resultado soma as saídas encontradas — buscar o nome de uma obra responde de imediato quanto já foi gasto nela.
 
+### Trocar a conta depois de lançado
+
+Abra o lançamento, **Editar**, e troque a conta — inclusive de banco para cartão e vice-versa. Tudo o que depende da conta (fatura, saldo, já comprometido) é calculado na hora, então o lançamento se reencaixa sozinho.
+
+Três regras que valem a pena saber:
+
+- **Compra parcelada muda inteira.** Metade no cartão e metade no banco não seria uma compra parcelada, seriam duas compras. As outras edições continuam valendo só para a parcela aberta.
+- **Indo para o cartão, o lançamento vira pago.** No cartão o dinheiro ainda não saiu da conta, então ele nunca fica pendente. Saindo do cartão ele continua marcado como pago — se você ainda não pagou, use **Desmarcar pago**.
+- **Fatura já paga trava.** Tirar ou pôr item numa fatura quitada deixaria o pagamento maior que o total, e o cartão passaria a dever um valor negativo. A trava vale para os dois lados, e também para a data: mudar a data move o lançamento de fatura do mesmo jeito.
+
+Transferência fica de fora: ela tem duas contas, e o caminho é excluir e lançar de novo.
+
 ### Lançar outro igual
 
 Abra um lançamento e use **Lançar outro igual**: o formulário abre preenchido com a mesma descrição, conta e categoria, na data de hoje, para você só conferir o valor. Numa compra parcelada ele repete a compra inteira, não uma parcela solta.
