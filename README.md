@@ -28,7 +28,7 @@ No computador, a partir de 900px de largura, essa barra vira uma **coluna fixa �
 
 Na barra os dois primeiros usam rótulo curto para caber em tela de celular; as telas se chamam **Relatório** e **Orçamento**.
 
-**Carteira** responde "dinheiro meu que não está na conta": patrimônio no topo, depois os investimentos e quem te deve.
+**Carteira** responde "dinheiro meu que não está na conta": patrimônio no topo, o **Em conta** aberto conta por conta (com mais de uma conta), depois os investimentos e quem te deve.
 
 ## Como ele pensa
 
