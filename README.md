@@ -165,6 +165,24 @@ Rendimento não aparece como receita em relatório nenhum. Você não recebeu es
 
 > Este é um registro do que você informa. Ele não recomenda onde aplicar, não projeta retorno e não opina sobre investimento nenhum.
 
+### Reserva programada
+
+IPVA, licenciamento, seguro, pneu, revisão — gasto que chega de uma vez, sempre em cima do mesmo mês. Uma aplicação pode ganhar uma **meta**: quanto juntar, para quando, para quê e **qual categoria ela vai pagar**.
+
+Daí o app faz a conta: `33% de R$ 1.800,00 até 10/01 · faltam R$ 1.200,00 · guarde R$ 400,00/mês`. O botão vira **Guardar** e já abre com o valor do mês preenchido.
+
+O número mensal se recalcula a cada abertura. Se você pular um mês, ele sobe sozinho — por isso não existe um alarme de "você está atrasado": o próprio valor já cobra, e um aviso a mais seria só barulho. Reserva também não pede "atualizar valor": o saldo dela é o que você guardou, não cotação.
+
+**Quando a conta chega, ela conta no mês em que foi paga**, como tudo no app — o IPVA de janeiro é R$ 1.800 de Transporte em janeiro. Diluir nos doze meses deixaria o orçamento liso contando dinheiro ainda não gasto, e quebraria a regra que vale para o resto. Em vez disso, o orçamento mostra de onde o dinheiro veio:
+
+```
+Transporte   R$ 780,00 / R$ 600,00
+estourou R$ 180,00
+└ R$ 600,00 saiu da Reserva do carro
+```
+
+O estouro continua lá, honesto. A linha de baixo só diz que ele estava planejado.
+
 ### Contas fixas
 
 Cadastre uma vez (aluguel, luz, internet, salário) e elas nascem sozinhas como pendentes quando o mês vira. As marcadas como "valor estimado" aprendem o valor novo quando você paga um valor diferente.

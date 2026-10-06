@@ -1014,6 +1014,17 @@ function desistir(id){
 }
 
 /* ---- Orçamento ---- */
+/* o IPVA conta no mês em que foi pago, como tudo no app. Mas se o dinheiro já
+   estava guardado, dizer isso embaixo do teto evita ler como descontrole um mês
+   que estava planejado há um ano. A reserva declara a categoria que ela serve. */
+function saiuDaReserva(catId,ym){
+  const res=db.contas.filter(c=>c.tipo==='invest'&&c.metaCat===catId);
+  if(!res.length)return null;
+  const ids=new Set(res.map(c=>c.id));
+  const v=db.lanc.filter(l=>l.tipo==='transf'&&mesDe(l.data)===ym&&ids.has(l.contaId)&&!isInvest(l.destId))
+                 .reduce((t,l)=>t+l.valor,0);
+  return v?{v,nome:res.length===1?res[0].nome:`${res.length} reservas`}:null;
+}
 function vOrcamento(){
   const gm=porCategoria(mes), mp=Object.fromEntries(gm);
   const cs=db.cats.filter(c=>c.tipo==='saida'&&!c.arq);
@@ -1024,12 +1035,13 @@ function vOrcamento(){
   ${comTeto.length?`<div class="big"><div><small>Teto total</small><strong>${R(tetoTot)}</strong></div>
    <div><small>Usado</small><strong class="${gastoTot>tetoTot?'neg':'pos'}">${R(gastoTot)}</strong></div></div>
   <div style="margin-top:10px">`+comTeto.map(c=>{
-    const g=mp[c.id]||0,t=db.orc[c.id],pc=g/t*100;
+    const g=mp[c.id]||0,t=db.orc[c.id],pc=g/t*100, rs=saiuDaReserva(c.id,mes);
     return `<div style="padding:10px 0;border-bottom:1px solid var(--bd)">
       <div style="display:flex;justify-content:space-between"><b>${esc(c.nome)}</b>
       <span class="v ${g>t?'neg':''}">${R(g)} <span class="mutc" style="font-weight:400">/ ${R(t)}</span></span></div>
       <div class="bar"><i class="${pc>100?'d':(pc>80?'w':'')}" style="width:${Math.min(100,pc)}%"></i></div>
-      <div class="sub">${g>t?`estourou ${R(g-t)}`:`sobram ${R(t-g)}`}</div></div>`;
+      <div class="sub">${g>t?`estourou ${R(g-t)}`:`sobram ${R(t-g)}`}</div>
+      ${rs?`<div class="sub">└ ${R(rs.v)} saiu da ${esc(rs.nome)}</div>`:''}</div>`;
   }).join('')+'</div>'
   :'<div class="empty">Nenhum teto definido ainda. Defina abaixo.</div>'}</div>
 
@@ -1371,6 +1383,21 @@ function vCarteira(){ return cardPatrimonio()+vInvest()+vReceber(); }
 
 /* ---- Investimentos ---- */
 const TIPOS_INV=['Poupança','CDB','Tesouro Direto','Fundo','LCI/LCA','Ações/FII','Cripto','Outro'];
+
+/* reserva programada: IPVA, seguro, pneu — gasto que chega de uma vez e dói menos
+   se você juntar antes. "Guarde X por mês" se recalcula sozinho a cada render: se
+   você pular um mês, o valor sobe. Por isso não existe aviso de atraso separado —
+   o próprio número já cobra, e um alarme a mais seria barulho. */
+const mesesEntre=(a,b)=>{const[ay,am]=a.split('-').map(Number),[by,bm]=b.split('-').map(Number);return (by-ay)*12+(bm-am)};
+function metaReserva(c){
+  if(!c.meta)return null;
+  const tem=saldo(c.id), falta=Math.max(0,c.meta-tem), h=hoje();
+  const pc=Math.max(0,Math.min(100,Math.round(tem/c.meta*100)));
+  const meses=mesesEntre(h,c.metaData||h);
+  /* prazo estourado ou vencendo este mês: não há o que diluir, é guardar tudo */
+  const porMes=falta?(meses>0?Math.ceil(falta/meses):falta):0;
+  return {tem,falta,pc,meses,porMes,venceu:!!c.metaData&&c.metaData<h,pronta:!falta};
+}
 function vInvest(){
   const apl=aplicacoes();
   if(!apl.length)return `<div class="c"><div class="empty">Nenhuma aplicação cadastrada.<br>
@@ -1383,12 +1410,21 @@ function vInvest(){
     const v=saldo(c.id), r=rendimento(c.id), a=v-r;
     const p=a>0?(r/a*100):0;
     const at=atualizadoEm(c.id), dias=at?diasEntre(at,h):null;
-    const velho=dias===null||dias>90;
+    /* reserva não precisa de "atualizar valor": o saldo dela é o que você guardou,
+       não cotação. Avisar seria alarme falso, e alarme falso ensina a ignorar alarme. */
+    const velho=!c.meta&&(dias===null||dias>90);
+    const mt=metaReserva(c);
+    const linhaMeta=mt?`<div class="bar"><i class="${mt.pronta?'':(mt.venceu?'d':'')}" style="width:${mt.pc}%"></i></div>
+      <div class="sub">${mt.pronta?`meta de ${R(c.meta)} alcançada ✓`
+        :mt.venceu?`<span class="wnc">venceu ${dDia(c.metaData)} e ainda faltam ${R(mt.falta)}</span>`
+        :`${mt.pc}% de ${R(c.meta)} até ${dDia(c.metaData)} · faltam ${R(mt.falta)} · guarde <b>${R(mt.porMes)}</b>/mês`}</div>`:'';
     return `<div class="row"><div class="l"><div class="t">${esc(c.nome)} <span class="tag k">${esc(c.subtipo||'Outro')}</span></div>
+      ${c.metaDesc?`<div class="sub">${esc(c.metaDesc)}</div>`:''}
       <div class="sub">${r>=0?'rendeu':'perdeu'} <span class="${r>=0?'pos':'neg'}">${R(Math.abs(r))}</span>${a>0?` · ${p>=0?'+':''}${p.toFixed(1)}%`:''}
-        · ${at?`atualizado ${dDia(at)}`:'nunca atualizado'}${velho?' <span class="wnc">⚠</span>':''}</div>
+        ${c.meta?'':`· ${at?`atualizado ${dDia(at)}`:'nunca atualizado'}${velho?' <span class="wnc">⚠</span>':''}`}</div>
+      ${linhaMeta}
       <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="s p" data-apor="${c.id}">Aportar</button>
+        <button class="s p" data-apor="${c.id}">${mt&&!mt.pronta?'Guardar':'Aportar'}</button>
         <button class="s" data-resg="${c.id}" ${v>0?'':'disabled style="opacity:.45"'}>Resgatar</button>
         <button class="s" data-atual="${c.id}">Atualizar valor</button>
         <button class="s" data-ed="invest|${c.id}">Editar</button></div></div>
@@ -1400,7 +1436,7 @@ function vInvest(){
     <div class="lida">Aplicado em <b>${fat.length}</b> ${fat.length>1?'lugares':'lugar'}</div>
     ${rosca(fat.slice(0,6),fat.slice(0,6).reduce((s,f)=>s+f.v,0),'da carteira','Composição da carteira')}</div>`:'';
 
-  const velhas=apl.filter(c=>{const a=atualizadoEm(c.id);return !a||diasEntre(a,h)>90});
+  const velhas=apl.filter(c=>{if(c.meta)return false;const a=atualizadoEm(c.id);return !a||diasEntre(a,h)>90});
   return `<div class="c"><h2>Investimentos</h2>
     <div class="big">
       <div><small>Aplicado</small><strong>${R(tot)}</strong></div>
@@ -1421,9 +1457,10 @@ function vInvest(){
 function moverAplicacao(id,entrando){
   const c=conta(id), contas=contasAtivas(false);
   if(!contas.length)return toast('Cadastre uma conta de banco ou dinheiro antes');
-  const disp=saldo(id);
-  formModal(entrando?`Aportar em ${c.nome}`:`Resgatar de ${c.nome}`,[
-    {k:'valor',label:'Valor',type:'money',v:entrando?'':fmt(disp)},
+  const disp=saldo(id), mt=metaReserva(c);
+  /* com meta, o campo já vem com o valor do mês: é o número que ele veio guardar */
+  formModal(entrando?(mt&&!mt.pronta?`Guardar em ${c.nome}`:`Aportar em ${c.nome}`):`Resgatar de ${c.nome}`,[
+    {k:'valor',label:'Valor',type:'money',v:entrando?(mt&&mt.porMes?fmt(mt.porMes):''):fmt(disp)},
     {k:'contaId',label:entrando?'Sai de qual conta':'Cai em qual conta',type:'select',opts:contas,v:contas[0].id},
     {k:'data',label:'Data',type:'date',v:hoje()}
   ],d=>{
@@ -1436,7 +1473,9 @@ function moverAplicacao(id,entrando){
     save(); fecharMdl();
     toast(entrando?`Aportado ${R(v)}`:`Resgatado ${R(v)}`); render();
   },entrando
-    ?'Aporte não é gasto: o dinheiro só muda de lugar e o patrimônio não se altera.'
+    ?(mt&&!mt.pronta
+      ? `Faltam <b>${R(mt.falta)}</b> para a meta${c.metaData?` de ${dDia(c.metaData)}`:''}. Guardar não é gasto: o dinheiro só muda de lugar.`
+      : 'Aporte não é gasto: o dinheiro só muda de lugar e o patrimônio não se altera.')
     :`Aplicado hoje: <b>${R(disp)}</b>. Resgatar não é receita — é o seu dinheiro voltando.`);
 }
 
@@ -1545,6 +1584,7 @@ function emUso(tipo,id){
     if(db.lanc.some(l=>l.catId===id))return 'tem lançamentos';
     if(db.fixas.some(f=>f.catId===id))return 'é usada por uma conta fixa';
     if(db.orc[id]>0)return 'tem teto no orçamento';
+    if(db.contas.some(c=>c.metaCat===id))return 'é a categoria de uma reserva';
   }
   if(tipo==='pessoa'&&db.lanc.some(l=>l.devedorId===id))return 'tem lançamentos';
   return null;
@@ -1624,14 +1664,23 @@ function editar(tipo,id){
       {k:'nome',label:'Nome',v:c?.nome,ph:'Ex: CDB Banco Inter'},
       {k:'subtipo',label:'Tipo',type:'select',opts:TIPOS_INV.map(t=>({id:t,nome:t})),v:c?.subtipo||'CDB'},
       ...(c?[]:[{k:'saldoInicial',label:'Quanto já tem aplicado hoje',type:'money',v:'0,00'}]),
+      {k:'meta',label:'Meta — quanto quer juntar (vazio se não é reserva)',type:'money',v:c?.meta?fmt(c.meta):'',ph:'Ex: 1.800,00'},
+      {k:'metaData',label:'Para quando',type:'date',v:c?.metaData||''},
+      {k:'metaDesc',label:'Para quê',v:c?.metaDesc||'',ph:'Ex: IPVA + licenciamento'},
+      {k:'metaCat',label:'Vai virar gasto de qual categoria',type:'select',v:c?.metaCat||'',
+        opts:[{id:'',nome:'—'},...db.cats.filter(x=>x.tipo==='saida'&&!x.arq)]},
       ...(c?[{k:'arq',label:'Arquivada',type:'check',v:c.arq}]:[])
     ],d=>{
       if(!d.nome.trim())return toast('Dê um nome');
-      if(c)Object.assign(c,{nome:d.nome,subtipo:d.subtipo,arq:!!d.arq});
+      const mv=parseMoney(d.meta);
+      if(mv>0&&!d.metaData)return toast('Diga para quando é a meta');
+      const met={meta:mv||undefined,metaData:mv?d.metaData:undefined,
+        metaDesc:mv?(d.metaDesc.trim()||undefined):undefined,metaCat:mv?(d.metaCat||undefined):undefined};
+      if(c)Object.assign(c,{nome:d.nome,subtipo:d.subtipo,arq:!!d.arq},met);
       else db.contas.push({id:uid(),nome:d.nome,tipo:'invest',subtipo:d.subtipo,
-        saldoInicial:parseMoney(d.saldoInicial),arq:false});
+        saldoInicial:parseMoney(d.saldoInicial),arq:false,...met});
       save();fecharMdl();render();
-    },c?'':'O que você já tem aplicado entra como saldo inicial e não conta como rendimento.',
+    },c?'A meta é opcional: serve para IPVA, seguro, pneu — coisa que chega de uma vez e você prefere juntar antes.':'O que você já tem aplicado entra como saldo inicial e não conta como rendimento. Com uma meta, o app diz quanto guardar por mês.',
     c?`<button class="b dg" data-act="excluir-cad|invest|${c.id}">Excluir</button>`:'');
   }
   if(tipo==='pessoa'){
@@ -2463,6 +2512,45 @@ if(location.search.includes('teste')){
   ok(contasAtivas(false,true).some(c=>c.tipo==='invest'),'mas aparece na transferência');
   tab='carteira'; render();
   ok(/CDB/.test($('#view').innerHTML),'tela de investimentos lista a aplicação');
+
+  /* reserva programada: meta, quanto guardar por mês e o que ela faz no orçamento */
+  const tr=db.cats.find(x=>x.nome==='Transporte').id;
+  const RS={id:'RS',nome:'Reserva do carro',tipo:'invest',subtipo:'CDB',saldoInicial:60000,
+    arq:false,meta:180000,metaData:addMesData(hoje(),3),metaDesc:'IPVA',metaCat:tr};
+  db.contas.push(RS);
+  let mt=metaReserva(RS);
+  ok(mt.tem===60000&&mt.falta===120000&&mt.pc===33,'a meta sabe o que já tem e o que falta');
+  ok(mt.meses===3&&mt.porMes===40000,'divide o que falta pelos meses que sobram');
+  RS.metaData=addMesData(hoje(),2);
+  ok(metaReserva(RS).porMes===60000,'perdeu um mês, o valor mensal sobe sozinho');
+  RS.metaData='2020-01-10';
+  mt=metaReserva(RS);
+  ok(mt.venceu&&mt.porMes===120000,'prazo vencido: guarde tudo, não há o que diluir');
+  RS.saldoInicial=180000;
+  ok(metaReserva(RS).pronta&&metaReserva(RS).porMes===0,'meta alcançada não pede mais nada');
+  ok(metaReserva(conta('I'))===null,'aplicação sem meta não vira reserva');
+
+  /* o gasto continua no mês em que foi pago; a reserva só explica de onde veio */
+  RS.metaData=addMesData(hoje(),3); RS.saldoInicial=180000;
+  const ymR=mesDe(hoje());
+  ok(saiuDaReserva(tr,ymR)===null,'sem resgate no mês, nada a explicar');
+  db.lanc.push({id:uid(),tipo:'transf',data:hoje(),desc:'Resgate IPVA',valor:180000,contaId:'RS',destId:'B',pago:true});
+  db.lanc.push({id:uid(),tipo:'saida',data:hoje(),desc:'IPVA',valor:180000,contaId:'B',catId:tr,pago:true});
+  const rs=saiuDaReserva(tr,ymR);
+  ok(rs&&rs.v===180000&&rs.nome==='Reserva do carro','o orçamento mostra quanto saiu da reserva');
+  ok(somaMeu(gastosMes(ymR).filter(l=>l.catId===tr))===180000,
+     'o IPVA conta como gasto no mês em que foi pago, não diluído');
+  ok(emUso('cat',tr)==='tem lançamentos','categoria de reserva não some por engano');
+  tab='carteira'; render();
+  const txtRes=$('#view').innerText;
+  ok(txtRes.includes('guarde '+R(metaReserva(RS).porMes)+'/mês'),'a tela diz quanto guardar por mês');
+  const blocoRes=(txtRes.split('Reserva do carro')[1]||'').split('+ Nova aplicação')[0];
+  ok(blocoRes&&!blocoRes.includes('nunca atualizado'),
+     'reserva não cobra "atualizar valor": o saldo dela é o que você guardou');
+  clk('[data-apor="RS"]');
+  ok($('#mf_valor').value===fmt(metaReserva(RS).porMes)||metaReserva(RS).pronta,
+     'Guardar já vem com o valor do mês preenchido');
+  clk('.mdl [data-act="fechar"]');
   /* a Carteira abre o "Em conta" conta por conta, e a soma tem de bater com o total */
   const det=[...document.querySelectorAll('.det .row')];
   ok(det.length===db.contas.filter(c=>ehGasto(c)&&!c.arq).length,'uma linha por conta de gasto');
