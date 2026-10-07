@@ -111,7 +111,7 @@ Já o orçamento e os relatórios são **regime de competência**: uma compra no
 
 ### Quando alguém vai te devolver
 
-Um interruptor no lançamento abre dois campos: **de quem** é a dívida e **quanto** dela. A parte devida:
+Um interruptor no lançamento abre uma lista: **de quem** é a dívida e **quanto** dela, com **+ Outra pessoa** para quantas pessoas forem. A parte devida:
 
 - **sai do seu dinheiro / entra na fatura normalmente**, porque saiu mesmo;
 - **fica fora das suas estatísticas**, porque essa parte não é gasto seu;
@@ -119,13 +119,16 @@ Um interruptor no lançamento abre dois campos: **de quem** é a dívida e **qua
 
 O que sobra continua sendo gasto seu, na categoria normal. É isso que faz o rateio funcionar:
 
-| Lanche de R$ 120, os amigos devem R$ 80 | |
+| Rodízio de R$ 180, rachado em três | |
 |---|---|
-| Sai da conta | R$ 120 |
-| Vira gasto seu | R$ 40, em "Alimentação fora" |
-| Vira dívida do João | R$ 80 |
+| Sai da conta | R$ 180 |
+| Vira gasto seu | R$ 60, em "Alimentação fora" |
+| Vira dívida do Irmão | R$ 60 |
+| Vira dívida do João | R$ 60 |
 
-Deixar o campo em branco quer dizer "me devem tudo", que é o caso do reembolso da empresa e do empréstimo. Empréstimo, por definição, não aparece em estatística nenhuma: não é consumo, é dinheiro que volta.
+**Dividir igual com você** preenche as partes rachando o valor entre você e as pessoas da lista, em centavos exatos. Com **uma pessoa só**, deixar o valor em branco quer dizer "me devem tudo" — é o caso do reembolso da empresa e do empréstimo. Com várias, campo vazio é zero: adivinhar a divisão aí daria número errado sem avisar. Empréstimo, por definição, não aparece em estatística nenhuma: não é consumo, é dinheiro que volta.
+
+Cada pessoa vira uma **dívida própria**, mesmo saindo do mesmo lançamento. Em Me devem elas aparecem em linhas separadas, com o nome ao lado, e dá para marcar e receber de uma sem mexer na outra — o Irmão paga hoje, o João paga semana que vem, e o lançamento continua sendo um só.
 
 Quando o pagamento cai, ele também **não conta como receita** — senão o "entrou no mês" ficaria inflado. É só o dinheiro voltando pro lugar.
 
